@@ -7,6 +7,7 @@ __pycache__/
 *.so
 
 # Distribution / packaging
+.DS_Store
 .Python
 build/
 develop-eggs/
@@ -206,6 +207,8 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
-# Ignore parquet and database files
+# Ignore csv,parquet and database files
 *.parquet
 *.db
+*.csv
+csv_files/
