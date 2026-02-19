@@ -51,6 +51,8 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 cover/
+documents_for_vectordb/
+chroma_db/
 
 # Translations
 *.mo
