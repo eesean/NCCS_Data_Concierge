@@ -1,9 +1,9 @@
 import os
 from typing import Any, Dict, List, Tuple
 
-from .SQLgenerator import generate_sql_from_nl
+from SQLgenerator import generate_sql_from_nl
 
-from .retrieval.SQLvalidator import (
+from SQLvalidator import (
     connect_duckdb,
     load_parquet_views,
     PARQUETS,
@@ -36,8 +36,9 @@ def handle_question(question: str, model: str | None = None) -> Dict[str, Any]:
     restricted_tables = {"condition_occurrence", "drug_exposure_cancerdrugs", "measurement_mutation"}
 
     # 2) Generate SQL in backend
-    sql = generate_sql_from_nl(question) if model is None else generate_sql_from_nl(question)
-
+    result = generate_sql_from_nl(question) #if model is None it will use a default model
+    sql = result['sql']
+    print(result)
     # backend-only logging
     if DEBUG:
         print("[DEBUG] Generated SQL:", sql)
@@ -99,3 +100,5 @@ def handle_question(question: str, model: str | None = None) -> Dict[str, Any]:
             "message": "Execution failed. Please refine your question.",
             "reasons": ["EXECUTION_FAILED"],
         }
+#====== TESTING PIPELINE ============#
+print(handle_question("How many patients of each gender were diagnosed with ICD10 code C18.7 in 2021?"))

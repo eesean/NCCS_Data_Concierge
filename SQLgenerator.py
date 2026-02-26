@@ -22,7 +22,7 @@ _llm = ChatOpenAI(
 class SQLGenError(RuntimeError):
     pass
 
-def generate_sql_from_nl(question: str) -> str:
+def generate_sql_from_nl(question: str, model_name: str = None) -> tuple:
     """
     Generate SQL from natural language. Returns SQL string only.
     Designed to be called by pipeline/backend later.
@@ -30,38 +30,61 @@ def generate_sql_from_nl(question: str) -> str:
     if not OPENROUTER_API_KEY:
         raise SQLGenError("Missing OPENROUTER_API_KEY in .env")
 
+    # Choose the model: Use the parameter if provided, else the default
+    target_model = model_name or MODEL
+    
+    # Bind the model to the existing LLM object
+    llm_with_model = _llm.bind(model=target_model)
+
     # Force structured output so downstream validation/execution is reliable
     system = f"""Return ONLY valid JSON in exactly this format:
-        {{"sql": "<single SELECT statement>"}}
+        {{"sql": "<single SELECT statement>",
+        "explanation": "<a brief, sentence explanation of what the query does>"
+        }}
 
         Rules:
         - Generate exactly ONE SQL statement.
         - Do NOT assume any other OMOP tables exist.
         - Only SELECT queries are allowed. Never use INSERT/UPDATE/DELETE/DROP/CREATE/ALTER.
         - Use only the available OMOP-style tables and join keys.
-        - Always include LIMIT. For COUNT-only queries, use LIMIT 1.
+        - Always include LIMIT. For COUNT-only queries, use LIMIT 1 when necessary.
         - Use DuckDB-compatible functions only.
         - Do NOT reference any table not explicitly listed below.
         - You may ONLY use these tables (exact spelling, lowercase):
         {ALLOWED_TABLES}
         """
 
-    resp = _llm.invoke([
+    resp = llm_with_model.invoke([
         SystemMessage(content=system),
         HumanMessage(content=question)
     ])
 
     content = _strip_code_fences((resp.content or "").strip())
+    usage = resp.usage_metadata or {}
+    meta = resp.response_metadata or {}
+    cost_details = meta.get("cost_details", {})
     if not content:
         raise SQLGenError("LLM returned empty output")
 
     try:
         parsed = json.loads(content)
-        sql = parsed["sql"].strip()
-    except Exception as e:
-        raise SQLGenError(f"LLM did not return valid JSON. Got: {content}") from e
+        return {
+            "sql": parsed.get("sql", "").strip(),
+            "explanation": parsed.get("explanation", "").strip(),
+            "usage": {
+                "input_tokens": usage.get("input_tokens"),
+                "output_tokens": usage.get("output_tokens"),
+                "total_tokens": usage.get("total_tokens")
+            },
+            "cost": {
+                "total_cost": cost_details.get("upstream_inference_cost"),
+                "prompt_cost": cost_details.get("upstream_inference_prompt_cost"),
+                "completion_cost": cost_details.get("upstream_inference_completions_cost")
+            }
+        }
 
-    return sql
+    except Exception as e:
+        raise SQLGenError(f"Failed to parse LLM response. Raw: {content}") from e
 
 def _strip_code_fences(text: str) -> str:
     """
