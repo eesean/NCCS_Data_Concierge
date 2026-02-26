@@ -1,28 +1,24 @@
+from SQLgenerator import generate_sql_from_nl, SQLGenError, ALLOWED_TABLES
 import os
-import json
-import re
-from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
-from SQLvalidator import PARQUETS
+from SQLEvaluator import SQLComplexityEvaluator
+from dotenv import load_dotenv
+import time
 
 load_dotenv()
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 MODEL = "openai/gpt-4o-mini"
-ALLOWED_TABLES = ", ".join(PARQUETS.keys())
 
-_llm = ChatOpenAI(
+chatopenai = ChatOpenAI(
     model=MODEL,
     base_url="https://openrouter.ai/api/v1",
     api_key=OPENROUTER_API_KEY,
     temperature=0,
 )
 
-class SQLGenError(RuntimeError):
-    pass
-
-def generate_sql_from_nl(question: str) -> str:
+def generate_llm_response(llm, question: str) -> str:
     """
     Generate SQL from natural language. Returns SQL string only.
     Designed to be called by pipeline/backend later.
@@ -46,30 +42,31 @@ def generate_sql_from_nl(question: str) -> str:
         {ALLOWED_TABLES}
         """
 
-    resp = _llm.invoke([
+    resp = llm.invoke([
         SystemMessage(content=system),
         HumanMessage(content=question)
     ])
 
-    content = _strip_code_fences((resp.content or "").strip())
-    if not content:
-        raise SQLGenError("LLM returned empty output")
+    return resp
 
-    try:
-        parsed = json.loads(content)
-        sql = parsed["sql"].strip()
-    except Exception as e:
-        raise SQLGenError(f"LLM did not return valid JSON. Got: {content}") from e
+def evaluate_llm_performance(nl_query: str) -> str:
+    # measure end-to-end call to the LLM
+    response = generate_llm_response(chatopenai, nl_query)
 
-    return sql
+    tokens = response.response_metadata['token_usage']['total_tokens']
+    cost = response.response_metadata['token_usage']['cost']
+    print(f"Tokens used: {tokens}")
+    print(f"Cost: ${cost}")
 
-def _strip_code_fences(text: str) -> str:
-    """
-    Removes Markdown code fences like ```json ... ``` or ``` ... ```
-    """
-    text = text.strip()
-    # Matches ```json\n...\n``` or ```\n...\n```
-    m = re.match(r"^```(?:json)?\s*(.*?)\s*```$", text, flags=re.DOTALL | re.IGNORECASE)
-    if m:
-        return m.group(1).strip()
-    return text
+    start_time = time.perf_counter()
+    sql_query = generate_sql_from_nl(nl_query)
+    sql_generation_latency = time.perf_counter() - start_time
+    print(f"Generated SQL:\n{sql_query}")
+    print(f"SQL generation latency: {sql_generation_latency:.3f} seconds")
+
+    evaluator = SQLComplexityEvaluator()
+    sql_query_complexity = evaluator.rate_query(sql_query)
+    print(f"Evaluated SQL Complexity: {sql_query_complexity}")
+
+test_prompt = "How many deaths occurred in 2020?"
+evaluate_llm_performance(test_prompt)
