@@ -5,7 +5,7 @@ from langchain_openai import ChatOpenAI
 load_dotenv()
 
 llm = ChatOpenAI(
-    model="deepseek/deepseek-r1-0528:free",
+    model="arcee-ai/trinity-large-preview:free",
     base_url="https://openrouter.ai/api/v1",
     api_key=os.getenv("OPENROUTER_API_KEY"),
 )
