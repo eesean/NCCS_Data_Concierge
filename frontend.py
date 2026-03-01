@@ -1,3 +1,4 @@
+import json
 import streamlit as st
 import requests
 import pandas as pd
@@ -14,8 +15,9 @@ if "processing" not in st.session_state:
 
 ## sidebar (AI model selection)
 MODEL_OPTIONS = [
-    "openai/gpt-4o-mini",
-    "deepseek/deepseek-v3.2",
+    "arcee-ai/trinity-large-preview:free",
+    "stepfun/step-3.5-flash:free",
+    "z-ai/glm-4.5-air:free"
 ]
 
 with st.sidebar:
@@ -25,7 +27,35 @@ with st.sidebar:
 
 st.title("NCCS Data Concierge")
 
+_TOOL_LABELS = {
+    "get_schema_context": "Fetching schema context",
+    "validate_sql_query": "Validating SQL",
+    "get_data": "Executing query",
+}
+
+def _render_steps(steps: list):
+    if not steps:
+        return
+    for step in steps:
+        if step["kind"] == "call":
+            label = _TOOL_LABELS.get(step["tool"], step["tool"])
+            st.markdown(
+                f'<div style="color:#999;font-size:0.82em;padding:2px 0 2px 10px;'
+                f'border-left:2px solid #ddd;margin:2px 0">⚙ {label}…</div>',
+                unsafe_allow_html=True,
+            )
+        elif step["kind"] == "result":
+            snippet = step["snippet"].replace("<", "&lt;").replace(">", "&gt;").replace("\n", " ")
+            st.markdown(
+                f'<div style="color:#bbb;font-size:0.78em;padding:2px 0 2px 22px;'
+                f'border-left:2px solid #eee;margin:2px 0;font-family:monospace">{snippet}</div>',
+                unsafe_allow_html=True,
+            )
+
+
 def render_assistant_payload(resp: dict):
+    _render_steps(resp.get("steps", []))
+
     st.write(resp.get("message", ""))
 
     if resp.get("status") != "ok":
@@ -61,41 +91,68 @@ for m in st.session_state.messages:
         else:
             st.write(m["content"])
 
-# user input (/ask)
+# user input (/ask/stream)
 prompt = st.chat_input("Ask a question about the data…", disabled=st.session_state.processing)
 if prompt and not st.session_state.processing:
     st.session_state.processing = True
-    
-    # user message
+
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.write(prompt)
 
     with st.chat_message("assistant"):
-        message_placeholder = st.empty()
-        message_placeholder.write("Thinking...")
-        
+        placeholder = st.empty()
+        placeholder.write("Thinking…")
+
+        accumulated_steps = []
+        final_data = None
+
         try:
             r = requests.post(
-                f"{API_URL}/ask",
+                f"{API_URL}/ask/stream",
                 json={"question": prompt, "model": selected_model},
+                stream=True,
                 timeout=120,
             )
             r.raise_for_status()
-            data = r.json()
 
-            message_placeholder.empty()
-            render_assistant_payload(data)
+            for raw_line in r.iter_lines():
+                if not raw_line:
+                    continue
+                line = raw_line.decode("utf-8") if isinstance(raw_line, bytes) else raw_line
+                if not line.startswith("data: "):
+                    continue
 
-            st.session_state.messages.append({"role": "assistant", "content": data})
-            
+                event = json.loads(line[6:])
+                evt_type = event.get("type")
+
+                if evt_type == "step_call":
+                    accumulated_steps.append({"kind": "call", "tool": event["tool"]})
+                    with placeholder.container():
+                        _render_steps(accumulated_steps)
+
+                elif evt_type == "step_result":
+                    accumulated_steps.append({"kind": "result", "tool": event["tool"], "snippet": event["snippet"]})
+                    with placeholder.container():
+                        _render_steps(accumulated_steps)
+
+                elif evt_type in ("done", "error"):
+                    event.pop("type")
+                    event["steps"] = accumulated_steps
+                    final_data = event
+                    with placeholder.container():
+                        render_assistant_payload(final_data)
+                    break
+
         except Exception as e:
-            message_placeholder.empty()
-            error_data = {"status": "error", "message": "Backend not reachable.", "reasons": [str(e)]}
-            render_assistant_payload(error_data)
-            st.session_state.messages.append({"role": "assistant", "content": error_data})
-        
+            final_data = {"status": "error", "message": "Backend not reachable.", "reasons": [str(e)], "steps": accumulated_steps}
+            with placeholder.container():
+                render_assistant_payload(final_data)
+
         finally:
             st.session_state.processing = False
-            
+
+        if final_data:
+            st.session_state.messages.append({"role": "assistant", "content": final_data})
+
     st.rerun()
