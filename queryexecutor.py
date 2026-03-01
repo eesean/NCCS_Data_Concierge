@@ -205,15 +205,91 @@ def demo():
     service = QueryExecutor(max_rows=10)
 
     queries = [
+        
+        # Test Case 1
+        """
+        SELECT COUNT(*) AS death_count 
+        FROM death 
+        WHERE YEAR(death_date) = 2020 
+        LIMIT 1;
+        """,
+
+        # Test Case 2
+        """
+        SELECT race_source_value, COUNT(*) AS race_count 
+        FROM person 
+        GROUP BY race_source_value 
+        ORDER BY race_count DESC LIMIT 5;
+        """,
+        
+        # Test Case 3
+        """
+        SELECT gender_source_value, COUNT(*) AS gender_count 
+        FROM person 
+        LEFT JOIN condition_occurrence USING (person_id) 
+        WHERE ICD10 = 'C18.7' AND YEAR(condition_start_date) = 2021 
+        GROUP BY gender_source_value;
+        """,
+
+        # Test Case 4
+        """
+        SELECT COUNT(*) AS count 
+        FROM drug_exposure_cancerdrugs 
+        WHERE YEAR(drug_exposure_start_date) = 2020 
+        AND YEAR(drug_exposure_end_date) = 2020;
+        """,
+        
+        # Test Case 5
+        """
+        SELECT COUNT(*) AS count 
+        FROM condition_occurrence 
+        WHERE condition_source_value LIKE '%colon%';
+        """,
+        
+        # Test Case 6
+        """
+        SELECT COUNT(*) AS male_count 
+        FROM person 
+        JOIN condition_occurrence USING (person_id) 
+        WHERE person.gender_source_value = 'male' 
+        AND condition_occurrence.condition_source_value LIKE '%rectum%';
+        """,
+
+        # Test Case 7
+        """
+        SELECT COUNT(*) AS male_count 
+        FROM person JOIN condition_occurrence USING (person_id) 
+        WHERE person.gender_source_value = 'male' 
+        AND condition_occurrence.condition_source_value LIKE '%rectum%';
+        """,
+
+        # Test Case 8
+        """
+        SELECT COUNT(*) AS total_records
+        FROM drug_exposure_cancerdrugs LEFT JOIN person USING (person_id) LEFT JOIN death USING (person_id)
+        WHERE death_date IS NOT NULL AND YEAR(NOW()) - year_of_birth >= 55;
+        """,
+
+        # Test Case 9
+        """
+        SELECT cause_source_value, COUNT(*) AS death_count 
+        FROM death 
+        GROUP BY cause_source_value 
+        ORDER BY death_count DESC LIMIT 1;
+        """,
+        
+        # Test Case 10 (checking why this failed validation)
+        """
+        SELECT 'measurement' AS event_type, COUNT(*) AS event_count 
+        FROM measurement_mutation
+        UNION ALL
+        SELECT 'procedure' AS event_type, COUNT(*) AS event_count FROM procedure_occurrence
+        UNION ALL
+        SELECT 'drug_exposure' AS event_type, COUNT(*) AS event_count FROM drug_exposure_cancerdrugs;
+        """,
+
         # should fail: SELECT *
         "SELECT * FROM person LIMIT 5",
-
-        # should pass
-        """
-        SELECT gender_concept_id, COUNT(*) AS n
-        FROM person
-        GROUP BY gender_concept_id
-        """,
 
         # should fail: missing WHERE for restricted table
         """
