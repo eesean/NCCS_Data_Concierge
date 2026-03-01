@@ -36,9 +36,9 @@ def handle_question(question: str, model: str | None = None) -> Dict[str, Any]:
     restricted_tables = {"condition_occurrence", "drug_exposure_cancerdrugs", "measurement_mutation"}
 
     # 2) Generate SQL in backend
-    result = generate_sql_from_nl(question) #if model is None it will use a default model
+    result = generate_sql_from_nl(question, model=model) #if model is None it will use a default model
     sql = result['sql']
-    print(result)
+
     # backend-only logging
     if DEBUG:
         print("[DEBUG] Generated SQL:", sql)
@@ -101,4 +101,5 @@ def handle_question(question: str, model: str | None = None) -> Dict[str, Any]:
             "reasons": ["EXECUTION_FAILED"],
         }
 #====== TESTING PIPELINE ============#
-print(handle_question("How many patients of each gender were diagnosed with ICD10 code C18.7 in 2021?"))
+if __name__ == "__main__":
+    print(handle_question("How many deaths occurred in 2020?"))

@@ -9,7 +9,9 @@ from SQLvalidator import PARQUETS
 load_dotenv()
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-MODEL = "openai/gpt-4o-mini"
+MODEL = "deepseek/deepseek-v3.2"
+## deepseek/deepseek-v3.2 
+## openai/gpt-4o-mini
 ALLOWED_TABLES = ", ".join(PARQUETS.keys())
 
 _llm = ChatOpenAI(
@@ -22,7 +24,7 @@ _llm = ChatOpenAI(
 class SQLGenError(RuntimeError):
     pass
 
-def generate_sql_from_nl(question: str, model_name: str = None) -> tuple:
+def generate_sql_from_nl(question: str, model: str = None) -> dict:
     """
     Generate SQL from natural language. Returns SQL string only.
     Designed to be called by pipeline/backend later.
@@ -31,7 +33,7 @@ def generate_sql_from_nl(question: str, model_name: str = None) -> tuple:
         raise SQLGenError("Missing OPENROUTER_API_KEY in .env")
 
     # Choose the model: Use the parameter if provided, else the default
-    target_model = model_name or MODEL
+    target_model = model or MODEL
     
     # Bind the model to the existing LLM object
     llm_with_model = _llm.bind(model=target_model)
