@@ -27,7 +27,7 @@ def _execute_duckdb(con, sql: str, max_rows: int = 200) -> Tuple[List[str], List
     rows = cur.fetchmany(max_rows)
     return cols, [list(r) for r in rows]
 
-
+#Handle question not needed implemented using stream question agent instead
 def handle_question(question: str, model: Optional[str] = None) -> Dict[str, Any]:
     """
     NL -> SQL (LLM) -> validate -> execute -> return results
@@ -184,7 +184,7 @@ def _collect_steps(messages: list) -> List[Dict[str, Any]]:
             steps.append({"kind": "result", "tool": tool_name, "snippet": snippet})
     return steps
 
-
+#Handle question agent using stream question agent instead
 def handle_question_agent(question: str, model: Optional[str] = None) -> Dict[str, Any]:
     """
     Route a natural-language question through the LangGraph ReAct agent (blocking).

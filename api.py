@@ -10,7 +10,7 @@ app = FastAPI(title="NCCS Data Concierge API")
 class AskRequest(BaseModel):
     question: str
     model: Optional[str] = None
-
+#/ask not needed using /ask/stream instead but keep the endpoint for potential non-streaming use in the future
 @app.post("/ask")
 def ask(req: AskRequest) -> Dict[str, Any]:
     return handle_question_agent(req.question, model=req.model)
