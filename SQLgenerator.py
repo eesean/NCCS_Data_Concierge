@@ -64,7 +64,7 @@ def generate_sql_from_nl(question: str, model: str = None) -> dict:
     content = _strip_code_fences((resp.content or "").strip())
     usage = resp.usage_metadata or {}
     meta = resp.response_metadata or {}
-    cost_details = meta.get("cost_details", {})
+    cost_details = meta.get("token_usage", {}).get("cost_details", {})
     if not content:
         raise SQLGenError("LLM returned empty output")
 
