@@ -1,5 +1,6 @@
+import json
 import os
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, Generator, List, Optional, Tuple
 
 from SQLgenerator import generate_sql_from_nl
 
@@ -9,6 +10,10 @@ from SQLvalidator import (
     PARQUETS,
     validate_sql as validate_sql_checker,
 )
+
+from retrieval.graph.node.workflow import build_graph
+from retrieval.graph.outputParser import parse_data_json, extract_final_text, extract_data_json
+from retrieval.llm import DEFAULT_MODEL
 
 DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 
@@ -22,8 +27,8 @@ def _execute_duckdb(con, sql: str, max_rows: int = 200) -> Tuple[List[str], List
     rows = cur.fetchmany(max_rows)
     return cols, [list(r) for r in rows]
 
-
-def handle_question(question: str, model: str | None = None) -> Dict[str, Any]:
+#Handle question not needed implemented using stream question agent instead
+def handle_question(question: str, model: Optional[str] = None) -> Dict[str, Any]:
     """
     NL -> SQL (LLM) -> validate -> execute -> return results
     Returns results only (never SQL) to satisfy your user story.
@@ -100,6 +105,152 @@ def handle_question(question: str, model: str | None = None) -> Dict[str, Any]:
             "message": "Execution failed. Please refine your question.",
             "reasons": ["EXECUTION_FAILED"],
         }
-#====== TESTING PIPELINE ============#
-if __name__ == "__main__":
-    print(handle_question("How many deaths occurred in 2020?"))
+def _build_response(messages: list) -> Dict[str, Any]:
+    """
+    Convert a list of agent messages into the response dict shape the frontend expects.
+    Does not include 'steps' — callers add that separately.
+    """
+    raw_data = extract_data_json(messages)
+    final_text = extract_final_text(messages) or ""
+
+    if raw_data is None:
+        return {
+            "status": "error",
+            "message": "Could not retrieve data for your question.",
+            "reasons": ["get_data was not reached by the agent"],
+        }
+
+    if raw_data.startswith("EXECUTION_ERROR"):
+        return {
+            "status": "error",
+            "message": "Query execution failed.",
+            "reasons": [raw_data],
+        }
+
+    if raw_data.startswith("Query executed successfully but returned no rows"):
+        return {
+            "status": "ok",
+            "message": final_text or "No results found.",
+            "columns": [],
+            "rows": [],
+            "row_count": 0,
+        }
+
+    data = parse_data_json(messages)
+    if not data:
+        return {
+            "status": "ok",
+            "message": final_text,
+            "metric": "Answer",
+            "value": final_text,
+        }
+
+    columns = list(data[0].keys())
+    rows = [[row.get(col) for col in columns] for row in data]
+
+    is_scalar = len(columns) == 1 and len(rows) == 1
+    if is_scalar:
+        return {
+            "status": "ok",
+            "message": final_text,
+            "metric": columns[0],
+            "value": rows[0][0],
+            "columns": columns,
+            "rows": rows,
+            "row_count": 1,
+        }
+
+    return {
+        "status": "ok",
+        "message": final_text,
+        "columns": columns,
+        "rows": rows,
+        "row_count": len(rows),
+    }
+
+
+def _collect_steps(messages: list) -> List[Dict[str, Any]]:
+    """Extract tool call / tool result steps from agent messages for UI display."""
+    steps = []
+    for msg in messages:
+        msg_type = type(msg).__name__
+        if msg_type == "AIMessage" and getattr(msg, "tool_calls", None):
+            for tc in msg.tool_calls:
+                steps.append({"kind": "call", "tool": tc["name"]})
+        elif msg_type == "ToolMessage":
+            tool_name = getattr(msg, "name", "unknown")
+            content = str(msg.content)
+            snippet = content[:200] + "…" if len(content) > 200 else content
+            steps.append({"kind": "result", "tool": tool_name, "snippet": snippet})
+    return steps
+
+#Handle question agent using stream question agent instead
+def handle_question_agent(question: str, model: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Route a natural-language question through the LangGraph ReAct agent (blocking).
+    Uses the model selected in the frontend; falls back to DEFAULT_MODEL if none given.
+    """
+    try:
+        graph = build_graph(model or DEFAULT_MODEL)
+        initial_state = {"query": question, "final_answer": "", "messages": []}
+        result = graph.invoke(initial_state)
+        messages = result["messages"]
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": "Agent pipeline failed.",
+            "reasons": [str(e)],
+            "steps": [],
+        }
+
+    steps = _collect_steps(messages)
+    response = _build_response(messages)
+    response["steps"] = steps
+    return response
+
+
+def stream_question_agent(question: str, model: Optional[str] = None) -> Generator[str, None, None]:
+    """
+    Generator that runs the ReAct agent and yields Server-Sent Events (SSE).
+
+    Event types emitted:
+      {"type": "step_call",   "tool": <name>}
+      {"type": "step_result", "tool": <name>, "snippet": <str>}
+      {"type": "done",        ...response payload...}
+      {"type": "error",       "message": ..., "reasons": [...]}
+    """
+    def sse(data: dict) -> str:
+        return f"data: {json.dumps(data)}\n\n"
+
+    try:
+        graph = build_graph(model or DEFAULT_MODEL)
+        initial_state = {"query": question, "final_answer": "", "messages": []}
+    except Exception as e:
+        yield sse({"type": "error", "status": "error", "message": "Agent setup failed.", "reasons": [str(e)]})
+        return
+
+    all_messages: List[Any] = []
+
+    try:
+        for chunk in graph.stream(initial_state, stream_mode="updates"):
+            for _node, node_output in chunk.items():
+                new_msgs = node_output.get("messages", [])
+                all_messages.extend(new_msgs)
+
+                for msg in new_msgs:
+                    msg_type = type(msg).__name__
+                    if msg_type == "AIMessage" and getattr(msg, "tool_calls", None):
+                        for tc in msg.tool_calls:
+                            yield sse({"type": "step_call", "tool": tc["name"]})
+                    elif msg_type == "ToolMessage":
+                        tool_name = getattr(msg, "name", "unknown")
+                        content = str(msg.content)
+                        snippet = content[:200] + "…" if len(content) > 200 else content
+                        yield sse({"type": "step_result", "tool": tool_name, "snippet": snippet})
+    except Exception as e:
+        yield sse({"type": "error", "status": "error", "message": "Agent execution failed.", "reasons": [str(e)]})
+        return
+
+    final = _build_response(all_messages)
+    final["type"] = "done"
+    yield sse(final)
