@@ -3,7 +3,9 @@
 from __future__ import annotations
 from typing import Any, List, Tuple, Optional
 import itertools
-
+from pathlib import Path
+import sys
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # -----------------------------
 # Helpers
