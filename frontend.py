@@ -14,16 +14,18 @@ if "processing" not in st.session_state:
     st.session_state.processing = False
 
 ## sidebar (AI model selection)
+# Only models with tool-calling support work. See: https://openrouter.ai/collections/tool-calling-models
 MODEL_OPTIONS = [
     "arcee-ai/trinity-large-preview:free",
     "stepfun/step-3.5-flash:free",
-    "z-ai/glm-4.5-air:free"
+    "z-ai/glm-4.5-air:free",
+    "nvidia/nemotron-3-nano-30b-a3b:free"
 ]
 
 with st.sidebar:
     st.header("Settings")
     selected_model = st.selectbox("AI model", MODEL_OPTIONS, index=0)
-    st.caption("This controls which AI model generates the SQL. The validation and execution are unchanged.")
+    st.caption("Only models with tool-calling support work. Add more from openrouter.ai/collections/tool-calling-models")
 
 st.title("NCCS Data Concierge")
 
@@ -56,14 +58,13 @@ def _render_steps(steps: list):
 def render_assistant_payload(resp: dict):
     _render_steps(resp.get("steps", []))
 
-    st.write(resp.get("message", ""))
-
     if resp.get("status") != "ok":
-        st.error(resp.get("message", "Error"))
-        reasons = resp.get("reasons", [])
-        if reasons:
-            st.code("\n".join(map(str, reasons)))
+        st.info(
+            "💡 **Try again:** Use a different model or simplify your question."
+        )
         return
+
+    st.write(resp.get("message", ""))
 
     # if scalar response (for COUNT)
     if "metric" in resp and "value" in resp:
