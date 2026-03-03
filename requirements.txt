@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+streamlit 
+langchain 
+langchain-openai 
+python-dotenv 
+requests 
+pandas 
+duckdb
+sqlglot
+langchain_community
+langchain_huggingface
+sentence_transformers
+chromadb
