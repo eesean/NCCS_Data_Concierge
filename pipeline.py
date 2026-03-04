@@ -2,8 +2,6 @@ import json
 import os
 from typing import Any, Dict, Generator, List, Optional, Tuple
 
-from SQLgenerator import generate_sql_from_nl
-
 from SQLvalidator import (
     connect_duckdb,
     load_parquet_views,
@@ -11,8 +9,11 @@ from SQLvalidator import (
     validate_sql as validate_sql_checker,
 )
 
+from langchain_core.messages import ToolMessage
+
 from retrieval.graph.node.workflow import build_graph
 from retrieval.graph.outputParser import parse_data_json, extract_final_text, extract_data_json
+from retrieval.graph.tool.vectorRag import get_schema_context
 from retrieval.llm import DEFAULT_MODEL
 
 DEBUG = os.getenv("DEBUG", "false").lower() == "true"
@@ -33,6 +34,8 @@ def handle_question(question: str, model: Optional[str] = None) -> Dict[str, Any
     NL -> SQL (LLM) -> validate -> execute -> return results
     Returns results only (never SQL) to satisfy your user story.
     """
+    from SQLgenerator import generate_sql_from_nl
+
     # 1) Connect to DuckDB + load encrypted parquet views
     con = connect_duckdb(use_db_file=False)
     load_parquet_views(con, PARQUETS)
@@ -181,18 +184,35 @@ def _collect_steps(messages: list) -> List[Dict[str, Any]]:
             tool_name = getattr(msg, "name", "unknown")
             content = str(msg.content)
             snippet = content[:200] + "…" if len(content) > 200 else content
+            # Schema is preloaded (no AIMessage); add synthetic call for display
+            if tool_name == "get_schema_context" and (
+                not steps or steps[-1].get("tool") != "get_schema_context" or steps[-1].get("kind") != "call"
+            ):
+                steps.append({"kind": "call", "tool": tool_name})
             steps.append({"kind": "result", "tool": tool_name, "snippet": snippet})
     return steps
+
+def _get_schema_and_messages(question: str) -> list:
+    """Call get_schema_context once and return messages with schema for the graph."""
+    schema_result = get_schema_context.invoke({"query": question})
+    schema_msg = ToolMessage(
+        content=str(schema_result),
+        name="get_schema_context",
+        tool_call_id="schema_preload",
+    )
+    return [schema_msg]
+
 
 #Handle question agent using stream question agent instead
 def handle_question_agent(question: str, model: Optional[str] = None) -> Dict[str, Any]:
     """
     Route a natural-language question through the LangGraph ReAct agent (blocking).
-    Uses the model selected in the frontend; falls back to DEFAULT_MODEL if none given.
+    Schema is fetched once before the graph; graph only does validate + get_data.
     """
     try:
+        schema_messages = _get_schema_and_messages(question)
         graph = build_graph(model or DEFAULT_MODEL)
-        initial_state = {"query": question, "final_answer": "", "messages": []}
+        initial_state = {"query": question, "final_answer": "", "messages": schema_messages}
         result = graph.invoke(initial_state)
         messages = result["messages"]
     except Exception as e:
@@ -223,15 +243,22 @@ def stream_question_agent(question: str, model: Optional[str] = None) -> Generat
         return f"data: {json.dumps(data)}\n\n"
 
     try:
+        # Get schema once before the graph (ensures single call)
+        schema_messages = _get_schema_and_messages(question)
         graph = build_graph(model or DEFAULT_MODEL)
-        initial_state = {"query": question, "final_answer": "", "messages": []}
+        initial_state = {"query": question, "final_answer": "", "messages": schema_messages}
     except Exception as e:
         yield sse({"type": "error", "status": "error", "message": "Agent setup failed.", "reasons": [str(e)]})
         return
 
-    all_messages: List[Any] = []
+    all_messages: List[Any] = list(schema_messages)
 
     try:
+        # Emit schema step (called outside graph)
+        yield sse({"type": "step_call", "tool": "get_schema_context"})
+        schema_content = str(schema_messages[0].content)
+        yield sse({"type": "step_result", "tool": "get_schema_context", "snippet": schema_content[:200] + "…" if len(schema_content) > 200 else schema_content})
+
         for chunk in graph.stream(initial_state, stream_mode="updates"):
             for _node, node_output in chunk.items():
                 new_msgs = node_output.get("messages", [])
