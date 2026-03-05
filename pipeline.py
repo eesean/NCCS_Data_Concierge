@@ -52,7 +52,6 @@ def handle_question(question: str, model: Optional[str] = None) -> Dict[str, Any
     validation = validate_sql_checker(
         con=con,
         sql=sql,
-        expected_result=None,
         allow_tables=allow_tables,
         allow_columns=None,
         require_where_for_tables=restricted_tables,

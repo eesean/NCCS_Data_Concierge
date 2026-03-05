@@ -8,11 +8,9 @@ import time
 import duckdb
 import sqlglot
 from sqlglot import exp
+import sys
 
-
-# ----------------------------
 # Config: data paths
-# ----------------------------
 BASE_DIR = Path(__file__).parent
 DATA_DIR = BASE_DIR / "data"
 
@@ -25,29 +23,22 @@ PARQUETS: Dict[str, Path] = {
     "death": DATA_DIR / "death.parquet",
 }
 
-DUCKDB_DB_PATH = DATA_DIR / "nccs_cap26.db"  # optional
+DUCKDB_DB_PATH = DATA_DIR / "nccs_cap26.db"  
 
 
-# ----------------------------
 # Result structure
-# ----------------------------
 @dataclass
 class ValidationResult:
     is_safe: bool
     is_performant: bool
-    is_correct: Optional[bool]  # None if not evaluated
     safety_reasons: List[str]
     performance_reasons: List[str]
-    correctness_reasons: List[str]
     ast_features: Dict[str, Any]
     plan_text: Optional[str]
     latency_ms: float
     error: Optional[str]
 
-
-# ----------------------------
 # Load data into DuckDB
-# ----------------------------
 def connect_duckdb(use_db_file: bool = False) -> duckdb.DuckDBPyConnection:
     """
     If use_db_file=True, connects to ./data/nccs_cap26.db
@@ -72,10 +63,7 @@ def load_parquet_views(con, parquet_map):
             );
         """)
 
-
-# ----------------------------
 # SQLGlot: parsing + safety + features
-# ----------------------------
 FORBIDDEN_STATEMENTS = {
     "insert",
     "update",
@@ -93,8 +81,7 @@ STAR_ALLOWLIST: Set[str] = set()
 
 
 def parse_sql(sql: str) -> exp.Expression:
-    # DuckDB dialect is supported; fallback to "postgres" sometimes also works,
-    # but we keep duckdb for consistency.
+    # DuckDB dialect is supported; fallback to "postgres" sometimes also works
     return sqlglot.parse_one(sql, read="duckdb")
 
 
@@ -210,9 +197,7 @@ def safety_check(
     return (len(reasons) == 0), reasons, ast_features, tree, None
 
 
-# ----------------------------
 # DuckDB: performance checks via EXPLAIN
-# ----------------------------
 def explain_query(con: duckdb.DuckDBPyConnection, sql: str) -> str:
     """
     DuckDB EXPLAIN returns a table. We join all rows into a single plan string.
@@ -247,32 +232,10 @@ def performance_check(plan_text: str, ast_features: Dict[str, Any]) -> Tuple[boo
 
     return (len(reasons) == 0), reasons
 
-
-# ----------------------------
-# Correctness checks (optional)
-# ----------------------------
-def run_query(con: duckdb.DuckDBPyConnection, sql: str) -> List[tuple]:
-    return con.execute(sql).fetchall()
-
-
-def compare_results_exact(got: List[tuple], expected: List[tuple]) -> bool:
-    """
-    MVP: exact match.
-    For real work, consider:
-      - sorting rows before compare
-      - comparing sets for order-insensitive queries
-      - comparing aggregates / rowcounts
-    """
-    return got == expected
-
-
-# ----------------------------
 # Orchestrator
-# ----------------------------
 def validate_sql(
     con: duckdb.DuckDBPyConnection,
     sql: str,
-    expected_result: Optional[List[tuple]] = None,
     allow_tables: Optional[Set[str]] = None,
     allow_columns: Optional[Set[str]] = None,
     require_where_for_tables: Optional[Set[str]] = None,
@@ -293,8 +256,6 @@ def validate_sql(
     plan_text: Optional[str] = None
     perf_ok = False
     perf_reasons: List[str] = []
-    correct: Optional[bool] = None
-    corr_reasons: List[str] = []
     err: Optional[str] = safety_err
 
     # If unsafe, stop early
@@ -303,10 +264,8 @@ def validate_sql(
         return ValidationResult(
             is_safe=False,
             is_performant=False,
-            is_correct=None,
             safety_reasons=safety_reasons,
             performance_reasons=[],
-            correctness_reasons=[],
             ast_features=ast_features,
             plan_text=None,
             latency_ms=latency_ms,
@@ -322,27 +281,13 @@ def validate_sql(
         perf_reasons = ["EXPLAIN_FAILED"]
         err = f"EXPLAIN_ERROR:{e}"
 
-    # Correctness stage (only if expected_result provided)
-    if expected_result is not None:
-        try:
-            got = run_query(con, sql)
-            correct = compare_results_exact(got, expected_result)
-            if not correct:
-                corr_reasons.append("RESULT_MISMATCH")
-        except Exception as e:
-            correct = False
-            corr_reasons.append("EXECUTION_FAILED")
-            err = f"EXEC_ERROR:{e}"
-
     latency_ms = (time.time() - t0) * 1000
 
     return ValidationResult(
         is_safe=True,
         is_performant=perf_ok,
-        is_correct=correct,
         safety_reasons=safety_reasons,
         performance_reasons=perf_reasons,
-        correctness_reasons=corr_reasons,
         ast_features=ast_features,
         plan_text=plan_text,
         latency_ms=latency_ms,
@@ -350,86 +295,31 @@ def validate_sql(
     )
 
 
-# ----------------------------
 # Main: run a few tests
-# ----------------------------
 def main() -> None:
-    # Choose ONE:
-    # 1) Use in-memory DuckDB + parquet views (recommended for your folder)
+    if len(sys.argv) < 2:
+        print("Usage: python SQLvalidator.py \"<SQL>\"")
+        return
+
+    sql = sys.argv[1]
+
     con = connect_duckdb(use_db_file=False)
     load_parquet_views(con, PARQUETS)
 
-    # 2) Or connect to the DuckDB db file (if it already contains tables/views)
-    # con = connect_duckdb(use_db_file=True)
-
     allow_tables = set(PARQUETS.keys())
-
-    # Example "restricted tables" where you want to require WHERE
     restricted = {"condition_occurrence", "drug_exposure_cancerdrugs", "measurement_mutation"}
 
-    tests = [
-        # Safety fails (if you block SELECT *)
-        ("SELECT * FROM person LIMIT 5", None),
+    res = validate_sql(
+        con=con,
+        sql=sql,
+        allow_tables=allow_tables,
+        allow_columns=None,
+        require_where_for_tables=restricted,
+        require_limit=True,
+        block_select_star=True,
+    )
 
-        # Valid aggregate query (should pass safety, likely pass performance)
-        (
-            """
-            SELECT gender_concept_id, COUNT(*) AS n
-            FROM person
-            GROUP BY gender_concept_id
-            LIMIT 10
-            """,
-            None,
-        ),
-
-        # Join + group
-        (
-            """
-            SELECT p.person_id, COUNT(*) AS num_conditions
-            FROM person p
-            JOIN condition_occurrence c ON c.person_id = p.person_id
-            GROUP BY p.person_id
-            LIMIT 10
-            """,
-            None,
-        ),
-
-        # Cartesian join (performance should fail)
-        (
-            """
-            SELECT p.person_id, c.condition_occurrence_id
-            FROM person p, condition_occurrence c
-            LIMIT 10
-            """,
-            None,
-        ),
-
-        # Missing WHERE on restricted table (safety should fail if restricted enforced)
-        (
-            """
-            SELECT person_id
-            FROM condition_occurrence
-            LIMIT 100
-            """,
-            None,
-        ),
-    ]
-
-    for i, (sql, expected) in enumerate(tests, 1):
-        res = validate_sql(
-            con=con,
-            sql=sql,
-            expected_result=expected,
-            allow_tables=allow_tables,
-            require_where_for_tables=restricted,
-            require_limit=True,
-            block_select_star=True,
-        )
-
-        print(f"\n--- Test {i} ---")
-        print("SQL:", " ".join(line.strip() for line in sql.strip().splitlines()))
-        print("Result:", asdict(res))
-
+    print(asdict(res))
 
 if __name__ == "__main__":
     main()

@@ -131,7 +131,6 @@ class QueryExecutor:
                 out.debug = {
                     "safety_reasons": validation.safety_reasons,
                     "performance_reasons": validation.performance_reasons,
-                    "correctness_reasons": validation.correctness_reasons,
                     "ast_features": validation.ast_features,
                     "error": validation.error,
                 }
