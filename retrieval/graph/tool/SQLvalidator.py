@@ -78,6 +78,14 @@ FORBIDDEN_STATEMENTS = {
 
 STAR_ALLOWLIST: Set[str] = set()
 
+# Tables that do NOT exist — when SQL references these, include a hint for the LLM
+DISALLOWED_TABLE_HINTS: Dict[str, str] = {
+    "concept": (
+        "The concept table does NOT exist. Do NOT use it. "
+        "Use drug_source_value, condition_source_value, procedure_source_value, measurement_concept_name, etc. for human-readable names."
+    ),
+}
+
 
 def parse_sql(sql: str) -> exp.Expression:
     return sqlglot.parse_one(sql, read="duckdb")
@@ -299,9 +307,18 @@ def validate_sql_query(sql: str) -> str:
 
     # Safety failures are blocking — the SQL must be fixed before proceeding.
     if not result.is_safe:
+        lines = [f"- {i}" for i in result.safety_reasons]
+        # Add LLM hint when concept table is disallowed
+        for reason in result.safety_reasons:
+            if "DISALLOWED_TABLES:" in reason:
+                for table in reason.replace("DISALLOWED_TABLES:", "").split(","):
+                    table = table.strip()
+                    if table in DISALLOWED_TABLE_HINTS:
+                        lines.append(f"- DO NOT USE THE TABLE: {DISALLOWED_TABLE_HINTS[table]}")
+                        break
         return (
             "Safety issues found — fix the SQL and call validate_sql_query again:\n"
-            + "\n".join(f"- {i}" for i in result.safety_reasons)
+            + "\n".join(lines)
         )
 
     tables = result.ast_features.get("tables", [])

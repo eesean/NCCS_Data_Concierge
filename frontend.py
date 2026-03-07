@@ -59,9 +59,11 @@ def render_assistant_payload(resp: dict):
     _render_steps(resp.get("steps", []))
 
     if resp.get("status") != "ok":
-        st.info(
-            "💡 **Try again:** Use a different model or simplify your question."
-        )
+        st.error("**Error**")
+        st.write(resp.get("message", "An error occurred."))
+        if resp.get("reasons"):
+            st.code("\n".join(resp["reasons"]), language="text")
+        st.info("💡 **Try again:** Use a different model or simplify your question.")
         return
 
     st.write(resp.get("message", ""))
@@ -113,7 +115,7 @@ if prompt and not st.session_state.processing:
                 f"{API_URL}/ask/stream",
                 json={"question": prompt, "model": selected_model},
                 stream=True,
-                timeout=120,
+                timeout=300,
             )
             r.raise_for_status()
 

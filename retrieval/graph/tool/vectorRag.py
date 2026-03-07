@@ -17,8 +17,6 @@ vectorstore = Chroma(
     collection_name="schema_columns",
 )
 
-
-@tool
 def get_schema_context(query: str, k: int = 6) -> str:
     """
     Retrieve relevant database schema (tables and columns) for a natural language query.

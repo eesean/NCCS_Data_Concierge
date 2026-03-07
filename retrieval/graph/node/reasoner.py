@@ -1,29 +1,54 @@
 """
-Reasoner node: LLM with tool binding. Decides when to call get_schema_context.
-Trinity (arcee-ai/trinity-large-preview:free) supports tool calling via OpenRouter.
+Reasoner node: LLM with tool binding. Schema is preloaded by pipeline; LLM only uses validate_sql_query and get_data.
 """
 from retrieval.llm import llm
-from retrieval.graph.tool.vectorRag import get_schema_context
 from retrieval.graph.tool.SQLvalidator import validate_sql_query
 from retrieval.graph.tool.get_data import get_data
 from langchain_core.messages import SystemMessage, HumanMessage
 
-tool_list = [get_schema_context, validate_sql_query, get_data]
-llm_with_tools = llm.bind_tools(tool_list)
+# Schema is fetched by pipeline before graph; reasoner never has get_schema_context
+_reasoner_tools = [validate_sql_query, get_data]
+llm_with_tools = llm.bind_tools(_reasoner_tools)
 
-_SYS_PROMPT = """You are a SQL expert working with a DuckDB healthcare dataset.
-                The schema has already been retrieved for you — it appears in the message above.
-                Follow these steps exactly, in order, and do not repeat any step:
-                1. Read the schema carefully. Copy the EXACT table name and EXACT column names as they appear — do NOT rename, abbreviate, or invent column names. If no column matches what you need, use the closest one that exists.
-                2. Call validate_sql_query once with your SQL. If it reports safety issues (DISALLOWED_TABLES or DISALLOWED_COLUMNS), look at the schema above and fix only the table/column names. If it says the SQL is valid or to proceed, move on immediately — do not call it again.
-                3. Call get_data once with the validated SQL to retrieve the results.
-                4. Present the results to the user and stop. Do not call any more tools after get_data.
-                Table and column names are case-sensitive. Join tables using person_id."""
+_SYS_PROMPT = """
+You are a SQL expert working with a DuckDB healthcare dataset. 
+You will be given: (a) a user question, and (b) schema context that lists the ONLY allowed tables/columns.
+
+HARD CONSTRAINTS (never violate):
+- Use ONLY table/column names explicitly present in the provided schema context. No guessing.
+- Table and column names are case-sensitive.
+- Join tables using `person_id` only (unless the schema explicitly states another join key).
+- Type rules:
+  - For ICD/code filtering use ICD10 / ICDO3 / *_source_value columns (VARCHAR) → use quoted strings (e.g., 'C34').
+  - In WHERE/BETWEEN: match column types exactly.
+
+MANDATORY FLOW (do not skip):
+step 1) PLAN (required, 3–6 lines, no SQL):
+   - Metric: (COUNT DISTINCT persons? COUNT rows? etc.)
+   - Cohort/filter strategy: (ICD/source_value/keyword; include exact column to use)
+   - Tables needed:
+   - Joins (only via person_id):
+   - Time window (if any):
+step 2) Write SQL that follows the plan and hard constraints.
+step 3) Call validate_sql_query with the SQL.
+step 4) If validation fails: fix SQL and repeat step 3.
+step 5) Only when validation passes: call get_data.
+step 6) As soon as get_data returns ANY result (including 0 rows, empty, or {"total_patients":0}), STOP. Return a text response to the user. Do NOT call validate_sql_query or get_data again — even if the result is 0.
+
+CRITICAL — RETURNING THE ANSWER:
+- get_data returning 0 rows, 0 counts, or empty JSON is a VALID result. Report it to the user.
+- After get_data succeeds, you MUST respond with a text message (no more tool calls). The graph only ends when you output text.
+- Never retry get_data because the result seems "wrong" or zero.
+
+FINAL RESPONSE FORMAT (after get_data returns):
+Using this query I gathered that <one-sentence answer>. 
+SQL: <the exact SQL used>
+"""
 
 
 def make_reasoner(llm_instance, tool_list=None):
     """Return a reasoner node function bound to the given LLM instance."""
-    tools = tool_list if tool_list is not None else [get_schema_context, validate_sql_query, get_data]
+    tools = tool_list if tool_list is not None else _reasoner_tools
     tools_bound = llm_instance.bind_tools(tools)
 
     def _reasoner(state):
