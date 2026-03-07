@@ -50,8 +50,6 @@ def calculate_similarity(user_prompt: str, sql_explanation: str) -> float:
     
     return round(float(final_score), 4)
 
-nlp = spacy.load("en_core_web_sm")
-
 if __name__ == "__main__":
     # Test cases
     test_prompt = "How many male patients had conditions or diagnosis concerning the rectum?"
