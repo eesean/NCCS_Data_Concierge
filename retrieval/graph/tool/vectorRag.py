@@ -17,7 +17,7 @@ vectorstore = Chroma(
     collection_name="schema_columns",
 )
 
-def get_schema_context(query: str, k: int = 6) -> str:
+def get_schema_context(query: str, k: int = 1) -> str:
     """
     Retrieve relevant database schema (tables and columns) for a natural language query.
     Use this when you need to generate SQL - it returns the schema context needed to write accurate queries.

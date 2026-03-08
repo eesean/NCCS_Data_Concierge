@@ -1,13 +1,5 @@
 import json
-import os
 from typing import Any, Dict, Generator, List, Optional, Tuple
-
-from SQLvalidator import (
-    connect_duckdb,
-    load_parquet_views,
-    PARQUETS,
-    validate_sql as validate_sql_checker,
-)
 
 from langchain_core.messages import ToolMessage
 
@@ -15,16 +7,6 @@ from retrieval.graph.node.workflow import build_graph
 from retrieval.graph.outputParser import parse_data_json, extract_final_text, extract_data_json
 from retrieval.graph.tool.vectorRag import get_schema_context
 from retrieval.llm import DEFAULT_MODEL
-
-#Not called anywhere
-def _execute_duckdb(con, sql: str, max_rows: int = 200) -> Tuple[List[str], List[List[Any]]]:
-    """
-    Execute SQL and return (columns, rows). Hard caps rows to avoid huge outputs.
-    """
-    cur = con.execute(sql)
-    cols = [d[0] for d in cur.description]
-    rows = cur.fetchmany(max_rows)
-    return cols, [list(r) for r in rows]
 
 
 def _build_response(messages: list) -> Dict[str, Any]:
@@ -90,26 +72,6 @@ def _build_response(messages: list) -> Dict[str, Any]:
         "row_count": len(rows),
     }
 
-#Not called anywhere
-def _collect_steps(messages: list) -> List[Dict[str, Any]]:
-    """Extract tool call / tool result steps from agent messages for UI display."""
-    steps = []
-    for msg in messages:
-        msg_type = type(msg).__name__
-        if msg_type == "AIMessage" and getattr(msg, "tool_calls", None):
-            for tc in msg.tool_calls:
-                steps.append({"kind": "call", "tool": tc["name"]})
-        elif msg_type == "ToolMessage":
-            tool_name = getattr(msg, "name", "unknown")
-            content = str(msg.content)
-            snippet = content[:200] + "…" if len(content) > 200 else content
-            # Schema is preloaded (no AIMessage); add synthetic call for display
-            if tool_name == "get_schema_context" and (
-                not steps or steps[-1].get("tool") != "get_schema_context" or steps[-1].get("kind") != "call"
-            ):
-                steps.append({"kind": "call", "tool": tool_name})
-            steps.append({"kind": "result", "tool": tool_name, "snippet": snippet})
-    return steps
 
 def _get_schema_and_messages(question: str) -> list:
     """Call get_schema_context once and return messages with schema for the graph."""
@@ -144,8 +106,6 @@ def stream_question_agent(question: str, model: Optional[str] = None) -> Generat
         return
 
     all_messages: List[Any] = list(schema_messages)
-    # Token tracker: accumulate here. LLM usage is in AIMessage.response_metadata["usage"] or ["token_usage"]
-    # token_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
     try:
         # Emit schema step (called outside graph)
@@ -164,8 +124,6 @@ def stream_question_agent(question: str, model: Optional[str] = None) -> Generat
 
                 for msg in new_msgs:
                     msg_type = type(msg).__name__
-                    # TOKEN TRACKER: Every AIMessage has response_metadata.usage from the LLM (reasoner node).
-                    # Extract: meta = getattr(msg, "response_metadata", {}) or {}; u = meta.get("usage") or meta.get("token_usage"); add u.get("prompt_tokens",0), u.get("completion_tokens",0) to token_usage.
                     if msg_type == "AIMessage" and getattr(msg, "tool_calls", None):
                         for tc in msg.tool_calls:
                             yield sse({"type": "step_call", "tool": tc["name"]})
@@ -180,5 +138,4 @@ def stream_question_agent(question: str, model: Optional[str] = None) -> Generat
 
     final = _build_response(all_messages)
     final["type"] = "done"
-    # TOKEN TRACKER: Add accumulated token_usage to final, e.g. final["token_usage"] = token_usage
     yield sse(final)

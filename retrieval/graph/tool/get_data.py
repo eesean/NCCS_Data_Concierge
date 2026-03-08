@@ -5,8 +5,7 @@ from retrieval.graph.tool.SQLvalidator import _get_connection
 def get_data(sql: str) -> str:
     """Execute a validated DuckDB SQL query against the parquet dataset and return the results.
     Only call this after validate_sql_query has confirmed the SQL is valid.
-    Returns the query results as a JSON array of records, or an error message if execution fails.
-    IMPORTANT: 0 rows and 0 counts are valid results — report them to the user and do NOT retry."""
+    Returns the query results as a JSON array of records, or an error message if execution fails."""
     con = _get_connection()
     try:
         df = con.execute(sql).fetchdf()
