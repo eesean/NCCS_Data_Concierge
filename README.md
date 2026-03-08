@@ -23,6 +23,8 @@ A natural language interface for querying healthcare data via SQL generation and
 3. Create a `.env` file in the project root with:
    ```
    OPENROUTER_API_KEY=your_api_key_here
+   PARQUET_KEY_NAME = "key128"
+   PARQUET_KEY_VALUE = "MachuPicchu&K2BC"
    ```
 
 ## Running the Application

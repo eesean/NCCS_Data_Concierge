@@ -11,13 +11,15 @@ from typing import Optional, List
 
 def extract_data_json(messages: list) -> Optional[str]:
     """
-    Return the raw JSON string from the get_data ToolMessage, or None
-    if get_data was not called.
+    Return the raw JSON string from the LAST get_data ToolMessage, or None
+    if get_data was not called. Uses the last result so we prefer the agent's
+    final (successful) execution over earlier failed attempts.
     """
+    found = None
     for msg in messages:
         if type(msg).__name__ == "ToolMessage" and getattr(msg, "name", None) == "get_data":
-            return msg.content
-    return None
+            found = msg.content
+    return found
 
 
 def parse_data_json(messages: list) -> Optional[List[dict]]:
