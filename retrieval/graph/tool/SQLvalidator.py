@@ -19,7 +19,7 @@ load_dotenv(Path(__file__).parents[3] / ".env")
 # Config: data paths
 # ----------------------------
 # SQLvalidator.py lives at retrieval/graph/tool/ → parents[3] is data_concierge/
-DATA_DIR = Path(__file__).parents[3] / "dataset"
+DATA_DIR = Path(__file__).parents[3] / "data"
 
 PARQUETS: Dict[str, Path] = {
     "person": DATA_DIR / "person.parquet",
