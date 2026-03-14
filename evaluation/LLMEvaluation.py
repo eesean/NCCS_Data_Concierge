@@ -1,22 +1,43 @@
 import sys
 from pathlib import Path
 from compare_results import compare_results_f1
+print("Importing SQLgenerator")
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from SQLgenerator import generate_sql_from_nl,explain_sql
+from SQLgenerator import explain_sql
+print("Importing SQLEvaluator")
 from SQLEvaluator import SQLComplexityEvaluator
+print("Importing SematicScoring" )
 from SematicScoring import calculate_similarity
+print("Importing queryexecutor")
 from queryexecutor import QueryExecutor
+print("Importing pipeline")
+from pipeline import stream_question_agent,build_graph
+print("Importing the rest")
+import json
 import time
 import pandas as pd
+import gc
+#--- to delte ----
+import psutil
+import os
+#------------------
+
+def get_memory_usage():
+    process = psutil.Process(os.getpid())
+    return f"{process.memory_info().rss / (1024 * 1024):.2f} MB"
 
 qe = QueryExecutor(max_rows=100000)
 
 BASE_MODEL = "openai/gpt-4o-mini"
 models = [
-    #"openai/gpt-4o-mini",
-    #"deepseek/deepseek-v3.2",
-    #"qwen/qwen-max",
-    "anthropic/claude-3-5-sonnet-20241022"
+    "openai/gpt-4o-mini",
+    "deepseek/deepseek-v3.2",
+    "qwen/qwen-max",
+    #"anthropic/claude-3-5-sonnet-20241022",
+    #"arcee-ai/trinity-large-preview:free",
+    #"stepfun/step-3.5-flash:free",
+    #"z-ai/glm-4.5-air:free",
+    #"nvidia/nemotron-3-nano-30b-a3b:free"
 ]
 
 def evaluate_llm_performance(models, eval_dataset, qe):
@@ -27,6 +48,10 @@ def evaluate_llm_performance(models, eval_dataset, qe):
         print(f"\n--- Starting Evaluation for Model: {model} ---")
         
         for case in eval_dataset:
+            graph = build_graph(model)
+            response = None
+            gc.collect()
+            print(f"Memory before case: {get_memory_usage()}")
             prompt = case["Prompt"]
             gold_sql = case["Gold"]
             print(f"Testing Prompt: {prompt[:50]}...")
@@ -56,24 +81,69 @@ def evaluate_llm_performance(models, eval_dataset, qe):
             }
 
             try:
-                # 1. Measure Latency and SQL Generation
+                # 1. Start the timer
                 start_time = time.perf_counter()
-                response = generate_sql_from_nl(prompt, model)
+
+                # 2. Call the generator
+                response = stream_question_agent(prompt, model)
+
+                final_payload = None
+                error_payload = None
+                ttft = None  # Time to First Token
+
+                # 3. Process the stream
+                for event in response:
+                    #print("Captured Events: " + event)
+                    # Capture TTFT (First data event)
+                    if ttft is None and event.startswith("data: "):
+                        ttft = time.perf_counter() - start_time
+                    
+                    # Parse SSE format
+                    if event.startswith("data: "):
+                        try:
+                            data = json.loads(event[6:])
+                            # The 'done' event contains the payload with usage/sql
+                            if data.get("type") == "done":
+                                final_payload = data
+                            elif data.get("type") == "error":
+                                error_payload = data
+                        except json.JSONDecodeError:
+                            continue
+
+                # 4. Calculate total latency after stream concludes
                 latency = time.perf_counter() - start_time
-                
-                generated_sql = response.get("sql", "")
-                usage = response.get("usage", {})
-                cost_info = response.get("cost", {})
+
+                # 5. Extract results safely
+                if error_payload:
+                    row_data["Error Message"] = " | ".join(error_payload.get("reasons", ["Unknown Error"]))
+                    generated_sql = "ERROR"
+                if final_payload:
+                    generated_sql = final_payload.get("final_sql", "")
+                    input_tokens = final_payload.get("input_tokens", 0)
+                    output_tokens = final_payload.get("output_tokens", 0)
+                    total_tokens = final_payload.get("total_tokens", 0)
+                    prompt_cost = final_payload.get("prompt_cost", 0.0)
+                    completion_cost = final_payload.get("completion_cost", 0.0)
+                    total_cost = final_payload.get("cost", 0.0)
+                else:
+                    # Handle the "Max loop reached" or crash scenario
+                    generated_sql = "ERROR"
+                    input_tokens = 0
+                    output_tokens = 0
+                    prompt_cost = 0.0
+                    total_tokens = 0.0
+                    completion_cost = 0.0
+                    total_cost = 0.0
                 
                 # 2. Extract Token and Cost Data
                 row_data["Generated SQL"] = generated_sql
                 row_data["Latency (s)"] = round(latency, 3)
-                row_data["Input Tokens"] = usage.get("input_tokens", 0)
-                row_data["Output Tokens"] = usage.get("output_tokens", 0)
-                row_data["Total Tokens"] = usage.get("total_tokens", 0)
-                row_data["Prompt Cost"] = float(cost_info.get("prompt_cost", 0.0))
-                row_data["Completion Cost"] = float(cost_info.get("completion_cost", 0.0))
-                row_data["Total Cost"] = float(cost_info.get("total_cost", 0.0))
+                row_data["Input Tokens"] = input_tokens
+                row_data["Output Tokens"] = output_tokens
+                row_data["Total Tokens"] = total_tokens
+                row_data["Prompt Cost"] = prompt_cost
+                row_data["Completion Cost"] = completion_cost
+                row_data["Total Cost"] = total_cost
 
                 # 3. Explanation and Semantic Score
                 # Note: explain_sql should also have its own try-catch or be safe
@@ -186,7 +256,45 @@ test_cases = [
         "Gold": "SELECT ROUND(inpatient_count / NULLIF(total_count, 0) * 100, 2) AS inpatient_percentage FROM (SELECT SUM(CASE WHEN LOWER(case_type) = 'inpatient' THEN 1 ELSE 0 END) AS inpatient_count, COUNT(*) AS total_count FROM drug_exposure_cancerdrugs WHERE YEAR(drug_exposure_start_date) = 2019 AND YEAR(drug_exposure_end_date) = 2019);"
     }
 ]
+NCCS_Test_case = [
+    {
+        "Prompt": "What was the total number of patients diagnosed with colorectal cancer in 2020?",
+        "Gold": "SELECT COUNT(*) AS count FROM condition_occurrence WHERE year(condition_start_date) = 2020;"
+    },
+    {
+        "Prompt": "How many cases of colorectal cancer were classified as signet ring adenocarcinoma histological type?",
+        "Gold": "SELECT COUNT(*) AS count FROM condition_occurrence WHERE LOWER(condition_source_value) LIKE '%signet ring%';"
+    },
+    {
+        "Prompt": "What is the distribution of colorectal cancer patients by ethnicity, age, and gender?",
+        "Gold": "SELECT gender_source_value, race_source_value, CASE WHEN YEAR(current_date) - year_of_birth < 50 THEN '<50' WHEN YEAR(current_date) - year_of_birth BETWEEN 50 AND 64 THEN '50-64' WHEN year(current_date) - year_of_birth BETWEEN 65 AND 74 THEN '65-74' ELSE '>75' END AS age_group, COUNT(distinct a.person_id) AS count FROM person a JOIN condition_occurrence b on a.person_id = b.person_id GROUP BY gender_source_value, race_source_value, age_group ORDER BY count DESC;"
+    },
+    {
+        "Prompt": "What is the current staging distribution for colorectal cancer cases?",
+        "Gold": "SELECT COUNT(*) AS count, value_as_concept_name AS cancer_stage FROM measurement_mutation WHERE lower(measurement_concept_name) like '%stage%' GROUP BY cancer_stage;"
+    },
+    {
+        "Prompt": "What trends are observed in cancer staging over time?",
+        "Gold": "SELECT YEAR(m.measurement_date) AS diagnosis_year, m.value_as_concept_name AS cancer_stage, COUNT(*) AS count FROM measurement_mutation m WHERE lower(measurement_concept_name) like '%stage%' GROUP BY diagnosis_year, cancer_stage;"
+    },
+    {
+        "Prompt": "Which demographic groups (age, ethnicity, gender) are more likely to present with advanced-stage disease?",
+        "Gold": "SELECT gender_source_value, race_source_value, CASE WHEN YEAR(current_date) - year_of_birth < 50 THEN '<50' WHEN YEAR(current_date) - year_of_birth BETWEEN 50 AND 64 THEN '50-64' WHEN year(current_date) - year_of_birth BETWEEN 65 AND 74 THEN '65-74' ELSE '>75' END AS age_group, COUNT(distinct a.person_id) AS count FROM person a LEFT JOIN measurement_mutation b on a.person_id = b.person_id WHERE measurement_concept_name like '%stage%' and value_as_concept_name like 'III%' or value_as_concept_name like 'IV%' GROUP BY gender_source_value, race_source_value, age_group ORDER BY count DESC;"
+    },
+    {
+        "Prompt": "How many early-onset colorectal cancer cases (patients under 50 years old) were diagnosed in 2021?",
+        "Gold": "SELECT COUNT(*) AS count FROM condition_occurrence a left join person b on a.person_id = b.person_id WHERE year(condition_start_date) = 2021 and year(current_date) - year_of_birth < 50;"
+    },
+    {
+        "Prompt": "What percentage of colorectal cancer cases have KRAS, BRAF, or NRAS mutations?",
+        "Gold": "WITH cohort AS (SELECT DISTINCT person_id FROM condition_occurrence), mutations AS (SELECT DISTINCT person_id FROM measurement_mutation LEFT JOIN cohort USING (person_id) WHERE (measurement_concept_name LIKE '%KRAS%' OR measurement_concept_name LIKE '%BRAF%' OR measurement_concept_name LIKE '%NRAS%') AND value_as_concept_name = 'mutation detected') SELECT ROUND(100.0 * (SELECT COUNT(*) FROM mutations) / (SELECT COUNT(*) FROM cohort), 2) AS mutation_percentage;"
+    },
+    {
+        "Prompt": "How many colorectal cancer patients underwent surgical treatment in 2022?",
+        "Gold": "SELECT COUNT(*) AS num_rows FROM procedure_occurrence LEFT JOIN condition_occurrence USING (person_id) WHERE YEAR(procedure_date) = 2022;"
+    }
+]
 
-evaluation_data = evaluate_llm_performance(models, test_cases,qe)
+evaluation_data = evaluate_llm_performance(models, NCCS_Test_case,qe)
 print(evaluation_data)
-evaluation_data.to_excel("nccs_evaluation_results.xlsx",index=False)
+evaluation_data.to_excel("nccs_evaluation_results(NCCS_test_paid_V3).xlsx",index=False)

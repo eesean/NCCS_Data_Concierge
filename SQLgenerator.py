@@ -5,29 +5,8 @@ import duckdb
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
-from SQLvalidator import PARQUETS
 
 load_dotenv()
-
-def get_duckdb_schema(db_path: str, table_names: list) -> str:
-    """
-    Connects to the DuckDB file and returns a formatted string of table schemas.
-    """
-    conn = duckdb.connect(str(db_path))
-    schema_parts = []
-    
-    for table in table_names:
-        # Get column names using DuckDB's PRAGMA
-        columns_info = conn.execute(f"PRAGMA table_info('{table}')").fetchall()
-        # columns_info returns (id, name, type, notnull, dflt_value, pk)
-        col_names = [col[1] for col in columns_info]
-        schema_parts.append(f"- {table}: {', '.join(col_names)}")
-    
-    conn.close()
-    return "\n".join(schema_parts)
-
-# Generate the schema string
-SCHEMA_DESCRIPTION = get_duckdb_schema("data/nccs_cap26.db", list(PARQUETS.keys()))
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 MODEL = "deepseek/deepseek-v3.2"
@@ -76,7 +55,7 @@ def generate_sql_from_nl(question: str, model: str = None) -> dict:
         - Do NOT reference any table not explicitly listed below.
         - Analyze the user prompt carefully, make sure all of the parameters and requirements are taken note of
         - You may ONLY use these tables (exact spelling, lowercase):
-        {SCHEMA_DESCRIPTION}
+        
         """
 
     resp = llm_with_model.invoke([
@@ -133,6 +112,8 @@ def explain_sql(sql: str, model_name: str = None) -> str:
             Content: Explicitly state the population being retrieved, including all specific medical codes , date ranges, and logical filters.
 
             Constraint: Do not include technical SQL jargon (like "JOIN," "WHERE," or "FLOAT"). Do not include any introductory text or "extra info"—only the question itself.
+
+            Numbers: If there are numbers, do not spell out the numbers, just leave it in numbers. E.g 5 do not spell out "five", Code name contains number like ID10, leave it as ID10
 
             Tone: Professional, precise, and clinical."""
     )

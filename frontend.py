@@ -20,6 +20,7 @@ MODEL_OPTIONS = [
     "stepfun/step-3.5-flash:free",
     "z-ai/glm-4.5-air:free",
     "nvidia/nemotron-3-nano-30b-a3b:free"
+
 ]
 
 MODEL_DESCRIPTIONS = {
@@ -97,13 +98,11 @@ def _render_steps(steps: list):
 
 def render_assistant_payload(resp: dict):
     _render_steps(resp.get("steps", []))
-
+    print("DEBUG RESPONSE:", resp)
     if resp.get("status") != "ok":
-        st.error("**Error**")
-        st.write(resp.get("message", "An error occurred."))
-        if resp.get("reasons"):
-            st.code("\n".join(resp["reasons"]), language="text")
-        st.info("💡 **Try again:** Use a different model or simplify your question.")
+        st.info(
+            "💡 **Try again:** Use a different model or simplify your question."
+        )
         return
 
     st.write(resp.get("message", ""))
@@ -155,7 +154,7 @@ if prompt and not st.session_state.processing:
                 f"{API_URL}/ask/stream",
                 json={"question": prompt, "model": selected_model},
                 stream=True,
-                timeout=300,
+                timeout=120,
             )
             r.raise_for_status()
 
