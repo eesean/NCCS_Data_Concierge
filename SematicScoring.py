@@ -31,17 +31,19 @@ def calculate_similarity(user_prompt: str, sql_explanation: str) -> float:
 
     # 2. The Entity Scaler (The "Anchor")
     prompt_nums = set(re.findall(r'\d+', user_prompt))
-    expl_nums = set(re.findall(r'\d+', sql_explanation))
-    
-    # Calculate overlap percentage for a smoother penalty
+
     if not prompt_nums:
-        scaler = 1.0  # No numbers to compare
+        scaler = 1.0 
     else:
-        # Intersection over Union (Jaccard) for numbers
-        matches = prompt_nums.intersection(expl_nums)
-        union = prompt_nums.union(expl_nums)
-        scaler = len(matches) / len(union)
-        print("scaler : " + str(scaler))
+        # Check if every number from the prompt exists in the explanation
+        expl_nums = set(re.findall(r'\b\d+\b', sql_explanation))
+        
+        # Calculate how many of the prompt's required numbers were found
+        found_matches = prompt_nums.intersection(expl_nums)
+        
+        # scaler: Matches Found / Total Required
+        # This allows for verbose explanations without penalizing for extra info
+        scaler = len(found_matches) / len(prompt_nums)
 
     # 3. Final Weighted Score
     # gets penalized if the numbers are wrong.
