@@ -86,7 +86,7 @@ def _get_schema_and_messages(question: str) -> list:
     
     return [system_msg, user_msg] # Need to return system and user message for Open AI to work. 
 
-def stream_question_agent(question: str, model: Optional[str] = None) -> Generator[str, None, None]:
+def stream_question_agent(question: str, model: Optional[str] = None, history: Optional[List[Dict]] = None) -> Generator[str, None, None]:
     """
     Generator that runs the ReAct agent and yields Server-Sent Events (SSE).
 
@@ -102,6 +102,35 @@ def stream_question_agent(question: str, model: Optional[str] = None) -> Generat
     try:
         # Get schema once before the graph (ensures single call)
         schema_messages = _get_schema_and_messages(question)
+
+        # Add conversation history
+        if history:
+            cleaned_history = []
+
+            for msg in history[:-1][-6:]:  
+                role = msg.get("role")
+                content = msg.get("content")
+
+                # User messages
+                if role == "user" and isinstance(content, str):
+                    cleaned_history.append(HumanMessage(content=content))
+    
+                # Assistant messages (only pass previous SQL, answers not included)
+                elif role == "assistant":
+                    if isinstance(content, dict):
+                        sql = content.get("final_sql")
+
+                        if sql:
+                            assistant_text = f"Previous SQL query:\n{sql}"
+                            cleaned_history.append(SystemMessage(content=assistant_text))
+
+            # Insert history before the current question
+            schema_messages = (
+                [schema_messages[0]]
+                + cleaned_history
+                + [schema_messages[-1]]
+            )
+
         graph = build_graph(model or DEFAULT_MODEL)
         initial_state = {"query": question, "final_answer": "", "messages": schema_messages}
     except Exception as e:
