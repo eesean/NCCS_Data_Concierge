@@ -11,8 +11,9 @@ from SematicScoring import calculate_similarity
 print("Importing queryexecutor")
 from queryexecutor import QueryExecutor
 print("Importing pipeline")
-from pipeline import stream_question_agent,build_graph
+from pipeline import stream_question_agent
 print("Importing the rest")
+import math
 import json
 import time
 import pandas as pd
@@ -48,7 +49,6 @@ def evaluate_llm_performance(models, eval_dataset, qe):
         print(f"\n--- Starting Evaluation for Model: {model} ---")
         
         for case in eval_dataset:
-            graph = build_graph(model)
             response = None
             gc.collect()
             print(f"Memory before case: {get_memory_usage()}")
@@ -171,8 +171,25 @@ def evaluate_llm_performance(models, eval_dataset, qe):
                 # 6. Record the data (Success or Error)
                 results.append(row_data)
 
-    return pd.DataFrame(results)
+    evaluation_df = pd.DataFrame(results)
+    evaluation_df["Log Transformed Tokens"] = evaluation_df["Total Tokens"].apply(lambda x: round(math.log(x + 1), 3)) # Log transform for better scaling
+    columns_to_normalize = ["Latency (s)", "Complexity Score", "Log Transformed Tokens", "F1 Score", "Semantic Score"]
+    for column in columns_to_normalize:
+        evaluation_df[f"Normalized {column}"] = normalize_score(column, evaluation_df)
+    normalized_columns = [f"Normalized {col}" for col in columns_to_normalize]
+    evaluation_df["Summary Score"] = evaluation_df[normalized_columns].mean(axis=1)
+    return evaluation_df
 
+def normalize_score(column, df):
+    min_score = df[column].min()
+    max_score = df[column].max()
+    min_max_columns = ["Semantic Score", "F1 Score"]
+    if max_score - min_score == 0:
+        return df[column].apply(lambda x: 0.5) # If all scores are the same, assign 0.5
+    elif column in min_max_columns:
+        return df[column].apply(lambda x: (x - min_score) / (max_score - min_score))
+    else: # reverse normalization applied (lower is better)
+        return df[column].apply(lambda x: (max_score - x) / (max_score - min_score))
 
 test_cases = [
     {
@@ -259,39 +276,59 @@ test_cases = [
 NCCS_Test_case = [
     {
         "Prompt": "What was the total number of patients diagnosed with colorectal cancer in 2020?",
-        "Gold": "SELECT COUNT(*) AS count FROM condition_occurrence WHERE year(condition_start_date) = 2020;"
+        "Gold": "SELECT COUNT(DISTINCT person_id) AS count FROM condition_occurrence WHERE (ICD10 ilike 'C18%' or ICD10 ilike 'C19' or ICD10 ilike 'C20') and YEAR(condition_start_date) = 2020"
     },
     {
         "Prompt": "How many cases of colorectal cancer were classified as signet ring adenocarcinoma histological type?",
-        "Gold": "SELECT COUNT(*) AS count FROM condition_occurrence WHERE LOWER(condition_source_value) LIKE '%signet ring%';"
+        "Gold": "SELECT COUNT(person_id) AS count FROM (SELECT *, trim(split(condition_source_value, '||')[4]) as Histo2 FROM condition_occurrence) where Histo2 ilike '%Signet ring%'"
     },
     {
-        "Prompt": "What is the distribution of colorectal cancer patients by ethnicity, age, and gender?",
-        "Gold": "SELECT gender_source_value, race_source_value, CASE WHEN YEAR(current_date) - year_of_birth < 50 THEN '<50' WHEN YEAR(current_date) - year_of_birth BETWEEN 50 AND 64 THEN '50-64' WHEN year(current_date) - year_of_birth BETWEEN 65 AND 74 THEN '65-74' ELSE '>75' END AS age_group, COUNT(distinct a.person_id) AS count FROM person a JOIN condition_occurrence b on a.person_id = b.person_id GROUP BY gender_source_value, race_source_value, age_group ORDER BY count DESC;"
+        "Prompt": "What is the patient counts for colorectal cancer by ethnic group?",
+        "Gold": "SELECT COUNT(*) as n, race_source_value FROM person GROUP BY race_source_value ORDER BY n DESC"
     },
     {
-        "Prompt": "What is the current staging distribution for colorectal cancer cases?",
-        "Gold": "SELECT COUNT(*) AS count, value_as_concept_name AS cancer_stage FROM measurement_mutation WHERE lower(measurement_concept_name) like '%stage%' GROUP BY cancer_stage;"
+        "Prompt": "Show me the number of colorectal cancer cases in each 5‑year age‑at‑diagnosis group.",
+        "Gold": "WITH crc AS (SELECT b.person_id, b.condition_start_date AS dx_date, b.ICD10 FROM condition_occurrence b WHERE b.ICD10 LIKE 'C18%' OR b.ICD10 LIKE 'C19' OR b.ICD10 LIKE 'C20'), ages AS (SELECT c.person_id, c.dx_date, EXTRACT(YEAR FROM c.dx_date) - a.year_of_birth - CASE WHEN EXTRACT(MONTH FROM c.dx_date) <= a.month_of_birth THEN 1 ELSE 0 END AS age FROM crc c JOIN person a USING(person_id)), bands AS (SELECT *, CAST(FLOOR(age / 5) * 5 AS INT) AS age_lo, CAST(FLOOR(age / 5) * 5 + 4 AS INT) AS age_hi FROM ages) SELECT CONCAT(CAST(age_lo AS STRING), '-', CAST(age_hi AS STRING)) AS age_group, COUNT(*) AS n_cases FROM bands GROUP BY age_lo, age_hi ORDER BY age_lo;"
     },
     {
-        "Prompt": "What trends are observed in cancer staging over time?",
-        "Gold": "SELECT YEAR(m.measurement_date) AS diagnosis_year, m.value_as_concept_name AS cancer_stage, COUNT(*) AS count FROM measurement_mutation m WHERE lower(measurement_concept_name) like '%stage%' GROUP BY diagnosis_year, cancer_stage;"
+        "Prompt": "What is the breakdown of colorectal cancer cases by stage? [tips: using p group stage, if null, then use c group stage]",
+        "Gold": "WITH colorectal_staging AS (SELECT person_id, measurement_concept_name, value_source_value AS stage, measurement_date, ROW_NUMBER() OVER (PARTITION BY person_id ORDER BY CASE WHEN measurement_concept_name = 'TNM Path Stage Group' THEN 1 WHEN measurement_concept_name = 'TNM Clin Stage Group' THEN 2 ELSE 3 END, measurement_date DESC) AS rn FROM measurement_mutation WHERE measurement_concept_name IN ('TNM Path Stage Group', 'TNM Clin Stage Group') AND person_id IN (SELECT DISTINCT person_id FROM condition_occurrence WHERE ICD10 LIKE 'C18%' OR ICD10 LIKE 'C19' OR ICD10 LIKE 'C20')), final_stages AS (SELECT person_id, CASE WHEN TRIM(UPPER(stage)) LIKE 'IV%' THEN 'IV' WHEN TRIM(UPPER(stage)) LIKE 'III%' THEN 'III' WHEN TRIM(UPPER(stage)) LIKE 'II%' THEN 'II' WHEN TRIM(UPPER(stage)) LIKE 'I%' THEN 'I' ELSE 'Unknown' END AS cleaned_stage, measurement_concept_name AS stage_type FROM colorectal_staging WHERE rn = 1) SELECT cleaned_stage AS stage, COUNT(*) AS case_count FROM final_stages WHERE cleaned_stage != 'Unknown' GROUP BY cleaned_stage ORDER BY cleaned_stage;"
     },
     {
-        "Prompt": "Which demographic groups (age, ethnicity, gender) are more likely to present with advanced-stage disease?",
-        "Gold": "SELECT gender_source_value, race_source_value, CASE WHEN YEAR(current_date) - year_of_birth < 50 THEN '<50' WHEN YEAR(current_date) - year_of_birth BETWEEN 50 AND 64 THEN '50-64' WHEN year(current_date) - year_of_birth BETWEEN 65 AND 74 THEN '65-74' ELSE '>75' END AS age_group, COUNT(distinct a.person_id) AS count FROM person a LEFT JOIN measurement_mutation b on a.person_id = b.person_id WHERE measurement_concept_name like '%stage%' and value_as_concept_name like 'III%' or value_as_concept_name like 'IV%' GROUP BY gender_source_value, race_source_value, age_group ORDER BY count DESC;"
+        "Prompt": "What are the trends for each colorectal cancer staging group across diagnosis years?",
+        "Gold": "WITH colorectal_staging AS (SELECT person_id, measurement_concept_name, value_source_value AS stage, measurement_date, ROW_NUMBER() OVER (PARTITION BY person_id ORDER BY CASE WHEN measurement_concept_name = 'TNM Path Stage Group' THEN 1 WHEN measurement_concept_name = 'TNM Clin Stage Group' THEN 2 ELSE 3 END, measurement_date DESC) AS rn FROM measurement_mutation WHERE measurement_concept_name IN ('TNM Path Stage Group', 'TNM Clin Stage Group') AND person_id IN (SELECT DISTINCT person_id FROM condition_occurrence WHERE ICD10 LIKE 'C18%' OR ICD10 LIKE 'C19' OR ICD10 LIKE 'C20')), final_stages AS (SELECT person_id, measurement_date, CASE WHEN TRIM(UPPER(stage)) LIKE 'IV%' THEN 'IV' WHEN TRIM(UPPER(stage)) LIKE 'III%' THEN 'III' WHEN TRIM(UPPER(stage)) LIKE 'II%' THEN 'II' WHEN TRIM(UPPER(stage)) LIKE 'I%' THEN 'I' ELSE 'Unknown' END AS cleaned_stage, measurement_concept_name AS stage_type FROM colorectal_staging WHERE rn = 1) SELECT YEAR(measurement_date) AS dx_year, cleaned_stage AS stage, COUNT(*) AS case_count FROM final_stages WHERE cleaned_stage != 'Unknown' GROUP BY cleaned_stage, dx_year ORDER BY dx_year, cleaned_stage;"
     },
     {
-        "Prompt": "How many early-onset colorectal cancer cases (patients under 50 years old) were diagnosed in 2021?",
-        "Gold": "SELECT COUNT(*) AS count FROM condition_occurrence a left join person b on a.person_id = b.person_id WHERE year(condition_start_date) = 2021 and year(current_date) - year_of_birth < 50;"
+        "Prompt": "Which age‑at‑diagnosis groups (in 5‑year intervals) show a highest number of patients diagnosed with stage IV colorectal cancer?",
+        "Gold": "WITH crc AS (SELECT b.person_id, b.condition_start_date AS dx_date, b.ICD10 FROM condition_occurrence b WHERE b.ICD10 LIKE 'C18%' OR b.ICD10 LIKE 'C19' OR b.ICD10 LIKE 'C20'), ages AS (SELECT c.person_id, c.dx_date, EXTRACT(YEAR FROM c.dx_date) - a.year_of_birth - CASE WHEN EXTRACT(MONTH FROM c.dx_date) <= a.month_of_birth THEN 1 ELSE 0 END AS age FROM crc c JOIN person a USING(person_id)), age_bands AS (SELECT person_id, age, CAST(FLOOR(age / 5) * 5 AS INT) AS age_lo, CAST(FLOOR(age / 5) * 5 + 4 AS INT) AS age_hi FROM ages), colorectal_staging AS (SELECT person_id, measurement_concept_name, value_source_value as stage, measurement_date, ROW_NUMBER() OVER (PARTITION BY person_id ORDER BY CASE WHEN measurement_concept_name = 'TNM Path Stage Group' THEN 1 WHEN measurement_concept_name = 'TNM Clin Stage Group' THEN 2 ELSE 3 END, measurement_date DESC) as rn FROM measurement_mutation WHERE measurement_concept_name IN ('TNM Path Stage Group', 'TNM Clin Stage Group') AND person_id IN (SELECT DISTINCT person_id FROM condition_occurrence WHERE ICD10 LIKE 'C18%' OR ICD10 LIKE 'C19' OR ICD10 LIKE 'C20')), stage_iv_patients AS (SELECT person_id FROM colorectal_staging WHERE rn = 1 AND TRIM(UPPER(stage)) LIKE 'IV%') SELECT CONCAT(CAST(age_lo AS STRING), '-', CAST(age_hi AS STRING)) AS age_group, COUNT(*) AS stage_iv_cases FROM age_bands ab JOIN stage_iv_patients siv ON ab.person_id = siv.person_id GROUP BY age_lo, age_hi ORDER BY stage_iv_cases DESC, age_lo LIMIT 1"
     },
     {
-        "Prompt": "What percentage of colorectal cancer cases have KRAS, BRAF, or NRAS mutations?",
-        "Gold": "WITH cohort AS (SELECT DISTINCT person_id FROM condition_occurrence), mutations AS (SELECT DISTINCT person_id FROM measurement_mutation LEFT JOIN cohort USING (person_id) WHERE (measurement_concept_name LIKE '%KRAS%' OR measurement_concept_name LIKE '%BRAF%' OR measurement_concept_name LIKE '%NRAS%') AND value_as_concept_name = 'mutation detected') SELECT ROUND(100.0 * (SELECT COUNT(*) FROM mutations) / (SELECT COUNT(*) FROM cohort), 2) AS mutation_percentage;"
+        "Prompt": "Show me the number of early‑onset colorectal cancer cases (age at diagnosis ≤ 49) diagnosed in 2021.",
+        "Gold": "WITH crc AS (SELECT b.person_id, b.condition_start_date AS dx_date, b.ICD10 FROM condition_occurrence b WHERE (b.ICD10 LIKE 'C18%' OR b.ICD10 LIKE 'C19' OR b.ICD10 LIKE 'C20') AND EXTRACT(YEAR FROM b.condition_start_date) = 2021), ages AS (SELECT c.person_id, c.dx_date, EXTRACT(YEAR FROM c.dx_date) - a.year_of_birth - CASE WHEN EXTRACT(MONTH FROM c.dx_date) <= a.month_of_birth THEN 1 ELSE 0 END AS age FROM crc c JOIN person a USING(person_id)) SELECT COUNT(*) AS early_onset_cases_2021 FROM ages WHERE age <= 49;"
     },
     {
-        "Prompt": "How many colorectal cancer patients underwent surgical treatment in 2022?",
-        "Gold": "SELECT COUNT(*) AS num_rows FROM procedure_occurrence LEFT JOIN condition_occurrence USING (person_id) WHERE YEAR(procedure_date) = 2022;"
+        "Prompt": "Among patients who were tested, what proportion of colorectal cancer cases show KRAS, BRAF, or NRAS mutations? [noted there are some missing values, please include those in analysis]",
+        "Gold": "WITH colorectal_patients AS (SELECT DISTINCT person_id FROM condition_occurrence WHERE (ICD10 ILIKE 'C18%' OR ICD10 ILIKE 'C19' OR ICD10 ILIKE 'C20')), mutation_summary AS (SELECT m.person_id, SUM(CASE WHEN m.measurement_concept_name = 'KRAS Mutation Conclusion' AND m.value_source_value = 'mutation detected' THEN 1 ELSE 0 END) AS kras_positive, SUM(CASE WHEN m.measurement_concept_name = 'BRAF Mutation Conclusion' AND m.value_source_value = 'mutation detected' THEN 1 ELSE 0 END) AS braf_positive, SUM(CASE WHEN m.measurement_concept_name = 'NRAS Mutation Conclusion' AND m.value_source_value = 'mutation detected' THEN 1 ELSE 0 END) AS nras_positive, COUNT(DISTINCT m.measurement_concept_name) AS tests_performed FROM measurement_mutation m INNER JOIN colorectal_patients cp ON m.person_id = cp.person_id WHERE m.measurement_concept_name IN ('KRAS Mutation Conclusion', 'BRAF Mutation Conclusion', 'NRAS Mutation Conclusion') GROUP BY m.person_id) SELECT COUNT(*) AS total_tested_patients, SUM(CASE WHEN kras_positive > 0 THEN 1 ELSE 0 END) AS patients_with_kras, ROUND((SUM(CASE WHEN kras_positive > 0 THEN 1 ELSE 0 END) * 100.0 / COUNT(*)), 2) AS kras_percentage, SUM(CASE WHEN braf_positive > 0 THEN 1 ELSE 0 END) AS patients_with_braf, ROUND((SUM(CASE WHEN braf_positive > 0 THEN 1 ELSE 0 END) * 100.0 / COUNT(*)), 2) AS braf_percentage, SUM(CASE WHEN nras_positive > 0 THEN 1 ELSE 0 END) AS patients_with_nras, ROUND((SUM(CASE WHEN nras_positive > 0 THEN 1 ELSE 0 END) * 100.0 / COUNT(*)), 2) AS nras_percentage FROM mutation_summary;"
+    },
+    {
+        "Prompt": "How many colorectal cancer patients with KRAS mutations are female?",
+        "Gold": "WITH colorectal_patients AS (SELECT DISTINCT person_id FROM condition_occurrence WHERE (ICD10 ILIKE 'C18%' OR ICD10 ILIKE 'C19' OR ICD10 ILIKE 'C20')), kras_positive_patients AS (SELECT DISTINCT m.person_id FROM measurement_mutation m INNER JOIN colorectal_patients cp ON m.person_id = cp.person_id WHERE m.measurement_concept_name = 'KRAS Mutation Conclusion' AND m.value_source_value = 'mutation detected') SELECT COUNT(DISTINCT kpp.person_id) AS female_kras_positive_patients FROM kras_positive_patients kpp INNER JOIN person d ON kpp.person_id = d.person_id WHERE LOWER(d.gender_source_value) = 'female';"
+    },
+    {
+        "Prompt": "How many patients with KRAS wild type received anti‑EGFR therapy (panitumumab or cetuximab)? [tips: wild type = no mutation; noted there are some missing values in drug_exposure_start_date, please include those missing dates as well, assume the drug was given]",
+        "Gold": "WITH colorectal_patients AS (SELECT DISTINCT person_id FROM condition_occurrence WHERE (ICD10 ILIKE 'C18%' OR ICD10 ILIKE 'C19' OR ICD10 ILIKE 'C20')) SELECT COUNT(DISTINCT m.person_id) AS kras_wild_type_with_anti_egfr FROM measurement_mutation m INNER JOIN colorectal_patients cp ON m.person_id = cp.person_id INNER JOIN drug_exposure_cancerdrugs d ON m.person_id = d.person_id WHERE m.measurement_concept_name = 'KRAS Mutation Conclusion' AND m.value_source_value = 'no mutation detected' AND (LOWER(d.drug_source_value) ILIKE '%panitumumab%' OR LOWER(d.drug_source_value) ILIKE '%cetuximab%');"
+    },
+    {
+        "Prompt": "Show me the number of stage IV Colorectal cancer patients who had a liver resection. [keywords: Liver, Lobectomy, Wedge/Local]",
+        "Gold": "WITH colorectal_staging AS (SELECT person_id, measurement_concept_name, value_source_value AS stage, measurement_date, ROW_NUMBER() OVER (PARTITION BY person_id ORDER BY CASE WHEN measurement_concept_name = 'TNM Path Stage Group' THEN 1 WHEN measurement_concept_name = 'TNM Clin Stage Group' THEN 2 ELSE 3 END, measurement_date DESC) AS rn FROM measurement_mutation WHERE measurement_concept_name IN ('TNM Path Stage Group', 'TNM Clin Stage Group') AND person_id IN (SELECT DISTINCT person_id FROM condition_occurrence WHERE ICD10 LIKE 'C18%' OR ICD10 LIKE 'C19' OR ICD10 LIKE 'C20')) SELECT COUNT(DISTINCT cs.person_id) AS stage_iv_with_liver_resection FROM colorectal_staging cs INNER JOIN procedure_occurrence s ON cs.person_id = s.person_id WHERE cs.rn = 1 AND TRIM(UPPER(cs.stage)) LIKE 'IV%' AND ((s.procedure_source_value ILIKE '%Liver%' AND s.procedure_source_value ILIKE '%LOBECTOMY%') OR s.procedure_source_value ILIKE '%WEDGE/LOCAL%');"
+    },
+    {
+        "Prompt": "How many cancer types and patients are in this dataset?",
+        "Gold": "SELECT ICD10, COUNT(DISTINCT person_id) as distinct_patients FROM condition_occurrence GROUP BY ICD10 ORDER BY distinct_patients DESC"
+    },
+    {
+        "Prompt": "What are the total deaths and their proportion of colorectal cancer for the year 2010-2020?",
+        "Gold": "WITH colorectal_patients_2010_2020 AS (SELECT DISTINCT person_id, condition_start_date FROM condition_occurrence WHERE (ICD10 ILIKE 'C18%' OR ICD10 ILIKE 'C19' OR ICD10 ILIKE 'C20') AND YEAR(condition_start_date) BETWEEN 2010 AND 2020) SELECT COUNT(DISTINCT cp.person_id) AS total_colorectal_patients_2010_2020, COUNT(DISTINCT d.person_id) AS total_deaths_colorectal_patients_2010_2020, ROUND((COUNT(DISTINCT d.person_id) * 100.0 / COUNT(DISTINCT cp.person_id)), 2) AS death_proportion_percentage FROM colorectal_patients_2010_2020 cp LEFT JOIN death d ON cp.person_id = d.person_id;"
     }
 ]
 
