@@ -1,0 +1,124 @@
+CANCER_MAPPING: Colorectal cancer
+QUERY_TERMS: colorectal cancer, bowel cancer, colon cancer, rectal cancer, large bowel cancer, colorectal carcinoma, rectum cancer, rectosigmoid cancer
+ICD10_CODES: C18, C19, C20
+SQL_FILTER: For condition_occurrence.ICD10 use: (ICD10 LIKE 'C18%' OR ICD10 LIKE 'C19%' OR ICD10 LIKE 'C20%')
+DESCRIPTION: Malignant neoplasms of colon (C18), rectosigmoid junction (C19), and rectum (C20). Use these codes when filtering condition_occurrence for colorectal/bowel cancer.
+
+---
+CANCER_MAPPING: Lung cancer
+QUERY_TERMS: lung cancer, bronchus cancer, bronchial cancer, lung carcinoma, pulmonary cancer, NSCLC, small cell lung cancer
+ICD10_CODES: C34
+SQL_FILTER: For condition_occurrence.ICD10 use: ICD10 LIKE 'C34%'
+DESCRIPTION: Malignant neoplasm of bronchus and lung. C34.0 main bronchus, C34.1 upper lobe, C34.2 middle lobe, C34.3 lower lobe. Use when filtering for lung cancer.
+
+---
+CANCER_MAPPING: Stomach cancer
+QUERY_TERMS: stomach cancer, gastric cancer, gastric carcinoma
+ICD10_CODES: C16
+SQL_FILTER: For condition_occurrence.ICD10 use: ICD10 LIKE 'C16%'
+DESCRIPTION: Malignant neoplasm of stomach. Use when filtering for stomach/gastric cancer.
+
+---
+CANCER_MAPPING: Liver cancer
+QUERY_TERMS: liver cancer, hepatic cancer, hepatocellular carcinoma, hepatoblastoma
+ICD10_CODES: C22
+SQL_FILTER: For condition_occurrence.ICD10 use: ICD10 LIKE 'C22%'
+DESCRIPTION: Malignant neoplasm of liver and intrahepatic bile ducts. Use when filtering for liver cancer.
+
+---
+CANCER_MAPPING: Pancreatic cancer
+QUERY_TERMS: pancreatic cancer, pancreas cancer
+ICD10_CODES: C25
+SQL_FILTER: For condition_occurrence.ICD10 use: ICD10 LIKE 'C25%'
+DESCRIPTION: Malignant neoplasm of pancreas. Use when filtering for pancreatic cancer.
+
+---
+CANCER_MAPPING: Breast cancer
+QUERY_TERMS: breast cancer, mammary cancer
+ICD10_CODES: C50
+SQL_FILTER: For condition_occurrence.ICD10 use: ICD10 LIKE 'C50%'
+DESCRIPTION: Malignant neoplasm of breast. Use when filtering for breast cancer.
+
+---
+CANCER_MAPPING: Oesophageal cancer
+QUERY_TERMS: oesophageal cancer, esophagus cancer, esophageal cancer
+ICD10_CODES: C15
+SQL_FILTER: For condition_occurrence.ICD10 use: ICD10 LIKE 'C15%'
+DESCRIPTION: Malignant neoplasm of oesophagus. Use when filtering for oesophageal cancer.
+
+---
+CANCER_MAPPING: Lip oral cavity and pharynx cancer
+QUERY_TERMS: mouth cancer, oral cancer, lip cancer, tongue cancer, pharynx cancer, throat cancer, oral cavity cancer
+ICD10_CODES: C00, C01, C02, C03, C04, C05, C06, C07, C08, C09, C10, C11, C12, C13, C14
+SQL_FILTER: For condition_occurrence.ICD10 use: (ICD10 LIKE 'C00%' OR ICD10 LIKE 'C01%' OR ICD10 LIKE 'C02%' OR ICD10 LIKE 'C03%' OR ICD10 LIKE 'C04%' OR ICD10 LIKE 'C05%' OR ICD10 LIKE 'C06%' OR ICD10 LIKE 'C07%' OR ICD10 LIKE 'C08%' OR ICD10 LIKE 'C09%' OR ICD10 LIKE 'C10%' OR ICD10 LIKE 'C11%' OR ICD10 LIKE 'C12%' OR ICD10 LIKE 'C13%' OR ICD10 LIKE 'C14%')
+DESCRIPTION: Malignant neoplasms of lip, oral cavity and pharynx. Use when filtering for mouth, tongue, throat cancer.
+
+---
+CANCER_MAPPING: Skin cancer and melanoma
+QUERY_TERMS: skin cancer, melanoma, malignant melanoma
+ICD10_CODES: C43, C44
+SQL_FILTER: For condition_occurrence.ICD10 use: (ICD10 LIKE 'C43%' OR ICD10 LIKE 'C44%')
+DESCRIPTION: Malignant melanoma (C43) and other malignant neoplasms of skin (C44). Use when filtering for skin cancer.
+
+---
+CANCER_MAPPING: Bone cancer
+QUERY_TERMS: bone cancer, bone sarcoma, osteosarcoma
+ICD10_CODES: C40, C41
+SQL_FILTER: For condition_occurrence.ICD10 use: (ICD10 LIKE 'C40%' OR ICD10 LIKE 'C41%')
+DESCRIPTION: Malignant neoplasm of bone and articular cartilage. Use when filtering for bone cancer.
+
+---
+CANCER_MAPPING: Mesothelioma
+QUERY_TERMS: mesothelioma, pleural mesothelioma
+ICD10_CODES: C45
+SQL_FILTER: For condition_occurrence.ICD10 use: ICD10 LIKE 'C45%'
+DESCRIPTION: Mesothelioma of pleura, peritoneum, pericardium. Use when filtering for mesothelioma.
+
+---
+CANCER_MAPPING: Larynx cancer
+QUERY_TERMS: larynx cancer, laryngeal cancer, voice box cancer
+ICD10_CODES: C32
+SQL_FILTER: For condition_occurrence.ICD10 use: ICD10 LIKE 'C32%'
+DESCRIPTION: Malignant neoplasm of larynx. Use when filtering for larynx cancer.
+
+---
+CANCER_MAPPING: Biliary tract cancer
+QUERY_TERMS: gallbladder cancer, bile duct cancer, biliary cancer
+ICD10_CODES: C23, C24
+SQL_FILTER: For condition_occurrence.ICD10 use: (ICD10 LIKE 'C23%' OR ICD10 LIKE 'C24%')
+DESCRIPTION: Malignant neoplasm of gallbladder and biliary tract. Use when filtering for biliary cancer.
+
+---
+CANCER_MAPPING: Prostate cancer
+QUERY_TERMS: prostate cancer, prostatic cancer
+ICD10_CODES: C61
+SQL_FILTER: For condition_occurrence.ICD10 use: ICD10 LIKE 'C61%'
+DESCRIPTION: Malignant neoplasm of prostate. Use when filtering for prostate cancer.
+
+---
+CANCER_MAPPING: Bladder cancer
+QUERY_TERMS: bladder cancer, urinary bladder cancer
+ICD10_CODES: C67
+SQL_FILTER: For condition_occurrence.ICD10 use: ICD10 LIKE 'C67%'
+DESCRIPTION: Malignant neoplasm of bladder. Use when filtering for bladder cancer.
+
+---
+CANCER_MAPPING: Kidney cancer
+QUERY_TERMS: kidney cancer, renal cancer, renal cell carcinoma
+ICD10_CODES: C64, C65
+SQL_FILTER: For condition_occurrence.ICD10 use: (ICD10 LIKE 'C64%' OR ICD10 LIKE 'C65%')
+DESCRIPTION: Malignant neoplasm of kidney and renal pelvis. Use when filtering for kidney cancer.
+
+---
+CANCER_MAPPING: Leukaemia
+QUERY_TERMS: leukaemia, leukemia, blood cancer
+ICD10_CODES: C91, C92, C93, C94, C95
+SQL_FILTER: For condition_occurrence.ICD10 use: (ICD10 LIKE 'C91%' OR ICD10 LIKE 'C92%' OR ICD10 LIKE 'C93%' OR ICD10 LIKE 'C94%' OR ICD10 LIKE 'C95%')
+DESCRIPTION: Lymphoid and myeloid leukaemia. Use when filtering for leukaemia.
+
+---
+CANCER_MAPPING: Lymphoma
+QUERY_TERMS: lymphoma, Hodgkin lymphoma, non-Hodgkin lymphoma
+ICD10_CODES: C81, C82, C83, C84, C85, C86
+SQL_FILTER: For condition_occurrence.ICD10 use: (ICD10 LIKE 'C81%' OR ICD10 LIKE 'C82%' OR ICD10 LIKE 'C83%' OR ICD10 LIKE 'C84%' OR ICD10 LIKE 'C85%' OR ICD10 LIKE 'C86%')
+DESCRIPTION: Hodgkin and non-Hodgkin lymphoma. Use when filtering for lymphoma.

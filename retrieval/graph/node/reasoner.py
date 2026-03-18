@@ -1,13 +1,14 @@
 """
-Reasoner node: LLM with tool binding. Schema is preloaded by pipeline; LLM only uses validate_sql_query and get_data.
+Reasoner node: LLM with tool binding. Schema is preloaded by pipeline; LLM uses validate_sql_query, get_data, and get_cancer_info when relevant.
 """
 from retrieval.llm import llm
 from retrieval.graph.tool.SQLvalidator import validate_sql_query
 from retrieval.graph.tool.get_data import get_data
+from retrieval.graph.tool.vectorRag import get_cancer_info
 from langchain_core.messages import SystemMessage, HumanMessage
 
 # Schema is fetched by pipeline before graph; reasoner never has get_schema_context
-_reasoner_tools = [validate_sql_query, get_data]
+_reasoner_tools = [validate_sql_query, get_data, get_cancer_info]
 llm_with_tools = llm.bind_tools(_reasoner_tools)
 
 _SYS_PROMPT = """
@@ -20,15 +21,10 @@ HARD CONSTRAINTS (never violate):
 - Join tables using `person_id` only (person.person_id = <other_table>.person_id).
 - No SELECT * — always list explicit columns (e.g., COUNT(*), person_id, condition_source_value).
 - Single statement only — no semicolons or multiple queries.
-- Type rules:
-  - *_concept_id columns are INTEGER → use integer literals (e.g., 123), never quoted strings.
-  - ICD10, ICDO3, *_source_value columns are VARCHAR → use quoted strings (e.g., 'C34', 'C34%', '%cancer%').
-  - Dates: use date literals or CAST; match column types exactly in WHERE.
 
-COUNTING SEMANTICS (critical for correct answers):
-- "How many patients/people?" → COUNT(DISTINCT person_id)
-- "How many records/occurrences/conditions/drugs?" → COUNT(*)
-- Never add LIMIT to count queries. For breakdowns (GROUP BY), include LIMIT if returning many rows.
+CANCER QUERIES (call get_cancer_info when relevant):
+- If the user asks about cancer types, diagnoses, or ICD codes (e.g. colorectal, lung, breast, melanoma), call `get_cancer_info` first with the cancer/diagnosis term.
+- Use the returned ICD-10 codes (e.g. C18%, C19%, C20% for colorectal) in your SQL WHERE clause when filtering condition_occurrence.ICD10.
 
 MANDATORY BEHAVIOR(DO NOT SKIP):
 - You are a SQL execution engine. Never output conversational text.

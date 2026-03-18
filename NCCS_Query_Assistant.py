@@ -1,3 +1,4 @@
+import html
 import json
 import streamlit as st
 import requests
@@ -7,11 +8,50 @@ API_URL = "http://127.0.0.1:8000"
 
 st.set_page_config(page_title="NCCS Data Concierge", layout="wide")
 
+# CSS: Sample questions fixed above chat input, expands upward (injected early)
+st.markdown(
+    """
+    <style>
+    /* Fix Sample questions at bottom, match chat input full width */
+    [data-testid="stExpander"] {
+        position: fixed !important;
+        bottom: calc(70px + 10mm) !important;
+        left: 21rem !important;
+        right: 7rem !important;
+        width: auto !important;
+        z-index: 999 !important;
+    }
+    @media (max-width: 768px) {
+        [data-testid="stExpander"] { left: 1rem !important; right: 7rem !important; }
+    }
+    /* Expand upward: header bar at bottom, content grows above */
+    [data-testid="stExpander"] details {
+        display: flex !important;
+        flex-direction: column-reverse !important;
+    }
+    [data-testid="stExpander"] summary { flex-shrink: 0 !important; }
+    /* Sample question buttons: force light bg + dark text (overrides dark theme) */
+    button.sample-q-copy, .sample-q-copy {
+        color: #1f2937 !important;
+        background: #e8eaed !important;
+        border: 1px solid #9aa0a6 !important;
+        -webkit-text-fill-color: #1f2937 !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 ## session state init
 if "messages" not in st.session_state:
     st.session_state.messages = []
 if "processing" not in st.session_state:
     st.session_state.processing = False
+SAMPLE_TEMPLATES = [
+    "What is the total number of {entity} diagnosed with {disease}{optional_filters}?",
+    "What is the total number of {entity} diagnosed with {disease}, grouped by {dimension}{optional_filters}?",
+    "What is the {aggregation_function} of {measure} for patients diagnosed with {disease}{optional_filters}?",
+]
 
 ## sidebar (AI model selection)
 # Only models with tool-calling support work. See: https://openrouter.ai/collections/tool-calling-models
@@ -71,7 +111,8 @@ with st.sidebar:
 st.title("NCCS Data Concierge")
 
 _TOOL_LABELS = {
-    "get_schema_context": "Fetching schema context",
+    "get_schema_context": "Fetching schema context and sql templates",
+    "get_cancer_info": "Looking up cancer ICD codes",
     "validate_sql_query": "Validating SQL",
     "get_data": "Executing query",
 }
@@ -132,6 +173,22 @@ for m in st.session_state.messages:
             render_assistant_payload(m["content"])
         else:
             st.write(m["content"])
+
+# Sample questions - click copies to clipboard (user can paste into chat input)
+# Rendered in iframe to avoid Streamlit dark-theme overriding button colors
+with st.expander("Sample questions", expanded=False):
+    buttons_html = ""
+    for t in SAMPLE_TEMPLATES:
+        data_attr = html.escape(t).replace('"', "&quot;")
+        display_label = html.escape(t).replace("{", "&#123;").replace("}", "&#125;")
+        buttons_html += f'''<button type="button" data-text="{data_attr}"
+ onclick="navigator.clipboard.writeText(this.getAttribute('data-text'));const L=this.textContent;this.textContent='Copied!';setTimeout(()=>this.textContent=L,1500)"
+ style="margin:4px 8px 4px 0;padding:6px 12px;border-radius:4px;border:1px solid #888;background:#c4c8cc;color:#111;cursor:pointer;font-size:0.9em;font-family:inherit;">{display_label}</button>'''
+    iframe_html = f"""<!DOCTYPE html><html><head><meta charset="utf-8"></head>
+    <body style="margin:0;padding:8px;background:transparent;color:#111;">
+    {buttons_html}
+    </body></html>"""
+    st.components.v1.html(iframe_html, height=85, scrolling=False)
 
 # user input (/ask/stream)
 prompt = st.chat_input("Ask a question about the data…", disabled=st.session_state.processing)
