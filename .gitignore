@@ -215,3 +215,4 @@ __marimo__/
 *.csv
 *.xlsx
 csv_files/
+retrieval/anchor_NUS_capstone_V2.ipynb
