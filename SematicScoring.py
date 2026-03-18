@@ -1,13 +1,7 @@
-import os
-from openai import OpenAI
 from dotenv import load_dotenv
 import numpy as np
-import spacy
 import re
-from sklearn.metrics.pairwise import cosine_similarity
-from sentence_transformers import SentenceTransformer
 from sentence_transformers import CrossEncoder
-import torch
 
 from SQLgenerator import generate_sql_from_nl, explain_sql
 
