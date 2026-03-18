@@ -152,7 +152,7 @@ if prompt and not st.session_state.processing:
         try:
             r = requests.post(
                 f"{API_URL}/ask/stream",
-                json={"question": prompt, "model": selected_model},
+                json={"question": prompt, "model": selected_model, "history": st.session_state.messages},
                 stream=True,
                 timeout=120,
             )
