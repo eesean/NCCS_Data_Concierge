@@ -1,0 +1,329 @@
+# ICD-10-AM Malignant Neoplasms (Cancer) Reference
+
+International Statistical Classification of Diseases and Related Health Problems, Tenth Revision, Australian Modification (ICD-10-AM)
+Source: Chapter C00–C97 — Malignant neoplasms
+
+================================================================================
+LIP, ORAL CAVITY AND PHARYNX CANCER (C00–C14)
+================================================================================
+
+C00  Lip cancer
+  C00.0  Malignant neoplasm of external upper lip
+  C00.1  Malignant neoplasm of external lower lip
+  C00.2  Malignant neoplasm of external lip, unspecified
+  C00.3  Malignant neoplasm of upper lip, inner aspect
+  C00.4  Malignant neoplasm of lower lip, inner aspect
+  C00.5  Malignant neoplasm of lip, unspecified, inner aspect
+  C00.6  Malignant neoplasm of commissure of lip
+  C00.8  Overlapping malignant lesion of lip
+  C00.9  Malignant neoplasm of lip, unspecified
+
+C01  Base of tongue cancer
+  C01    Malignant neoplasm of base of tongue
+
+C02  Tongue cancer (other and unspecified parts)
+  C02.0  Malignant neoplasm of dorsal surface of tongue
+  C02.1  Malignant neoplasm of border of tongue
+  C02.2  Malignant neoplasm of ventral surface of tongue
+  C02.3  Malignant neoplasm of anterior two-thirds of tongue, part unspecified
+  C02.4  Malignant neoplasm of lingual tonsil
+  C02.8  Malignant neoplasm of overlapping lesion of tongue
+  C02.9  Malignant neoplasm of tongue, unspecified
+
+C03  Gum cancer
+  C03.0  Malignant neoplasm of upper gum
+  C03.1  Malignant neoplasm of lower gum
+  C03.9  Malignant neoplasm of gum, unspecified
+
+C04  Floor of mouth cancer
+  C04.0  Malignant neoplasm of anterior floor of mouth
+  C04.1  Malignant neoplasm of lateral floor of mouth
+  C04.8  Overlapping malignant lesion of floor of mouth
+  C04.9  Malignant neoplasm of floor of mouth, unspecified
+
+C05  Palate cancer
+  C05.0  Malignant neoplasm of hard palate
+  C05.1  Malignant neoplasm of soft palate
+  C05.2  Malignant neoplasm of uvula
+  C05.8  Overlapping malignant lesion of palate
+  C05.9  Malignant neoplasm of palate, unspecified
+
+C06  Mouth cancer (other and unspecified)
+  C06.0  Malignant neoplasm of cheek mucosa
+  C06.1  Malignant neoplasm of vestibule of mouth
+  C06.2  Malignant neoplasm of retromolar area
+  C06.8  Overlapping malignant lesion of other and unspecified parts of mouth
+  C06.9  Malignant neoplasm of mouth, unspecified
+
+C07  Salivary gland cancer — parotid
+  C07    Malignant neoplasm of parotid gland
+
+C08  Salivary gland cancer (other and unspecified)
+  C08.0  Malignant neoplasm of submandibular gland
+  C08.1  Malignant neoplasm of sublingual gland
+  C08.8  Overlapping malignant lesion of major salivary glands
+  C08.9  Malignant neoplasm of major salivary gland, unspecified
+
+C09  Tonsil cancer
+  C09.0  Malignant neoplasm of tonsillar fossa
+  C09.1  Malignant neoplasm of tonsillar pillar (anterior)(posterior)
+  C09.8  Overlapping malignant lesion of tonsil
+  C09.9  Malignant neoplasm of tonsil, unspecified
+
+C10  Oropharynx cancer
+  C10.0  Malignant neoplasm of vallecula
+  C10.1  Malignant neoplasm of anterior surface of epiglottis
+  C10.2  Malignant neoplasm of lateral wall of oropharynx
+  C10.3  Malignant neoplasm of posterior wall of oropharynx
+  C10.4  Malignant neoplasm of branchial cleft
+  C10.8  Overlapping malignant lesion of oropharynx
+  C10.9  Malignant neoplasm of oropharynx, unspecified
+
+C11  Nasopharynx cancer
+  C11.0  Malignant neoplasm of superior wall of nasopharynx
+  C11.1  Malignant neoplasm of posterior wall of nasopharynx
+  C11.2  Malignant neoplasm of lateral wall of nasopharynx
+  C11.3  Malignant neoplasm of anterior wall of nasopharynx
+  C11.8  Overlapping malignant lesion of nasopharynx
+  C11.9  Malignant neoplasm of nasopharynx, unspecified
+
+C12  Pyriform sinus cancer
+  C12    Malignant neoplasm of pyriform sinus
+
+C13  Hypopharynx cancer
+  C13.0  Malignant neoplasm of postcricoid region
+  C13.1  Malignant neoplasm of aryepiglottic fold, hypopharyngeal aspect
+  C13.2  Malignant neoplasm of posterior wall of hypopharynx
+  C13.8  Overlapping malignant lesion of hypopharynx
+  C13.9  Malignant neoplasm of hypopharynx, unspecified
+
+C14  Pharynx cancer (other and ill-defined)
+  C14.0  Malignant neoplasm of pharynx, unspecified
+  C14.2  Malignant neoplasm of Waldeyer ring
+  C14.8  Overlapping malignant lesion of lip, oral cavity and pharynx
+
+================================================================================
+OESOPHAGEAL CANCER (C15)
+================================================================================
+
+C15  Oesophageal cancer
+  C15.0  Malignant neoplasm of cervical part of oesophagus
+  C15.1  Malignant neoplasm of thoracic part of oesophagus
+  C15.2  Malignant neoplasm of abdominal part of oesophagus
+  C15.3  Malignant neoplasm of upper third of oesophagus
+  C15.4  Malignant neoplasm of middle third of oesophagus
+  C15.5  Malignant neoplasm of lower third of oesophagus
+  C15.8  Overlapping malignant lesion of oesophagus
+  C15.9  Malignant neoplasm of oesophagus, unspecified
+
+================================================================================
+STOMACH CANCER (C16)
+================================================================================
+
+C16  Stomach cancer
+  C16.0  Malignant neoplasm of cardia
+  C16.1  Malignant neoplasm of fundus of stomach
+  C16.2  Malignant neoplasm of body of stomach
+  C16.3  Malignant neoplasm of pyloric antrum
+  C16.4  Malignant neoplasm of pylorus
+  C16.5  Malignant neoplasm of lesser curvature of stomach, unspecified
+  C16.6  Malignant neoplasm of greater curvature of stomach, unspecified
+  C16.8  Overlapping malignant lesion of stomach
+  C16.9  Malignant neoplasm of stomach, unspecified
+
+================================================================================
+SMALL INTESTINE CANCER (C17)
+================================================================================
+
+C17  Small intestine cancer
+  C17.0  Malignant neoplasm of duodenum
+  C17.1  Malignant neoplasm of jejunum
+  C17.2  Malignant neoplasm of ileum
+  C17.3  Malignant neoplasm of Meckel's diverticulum
+  C17.8  Overlapping malignant lesion of small intestine
+  C17.9  Malignant neoplasm of small intestine, unspecified
+
+================================================================================
+COLORECTAL CANCER (C18–C21)
+================================================================================
+
+C18  Colon cancer
+  C18.0  Malignant neoplasm of caecum
+  C18.1  Malignant neoplasm of appendix
+  C18.2  Malignant neoplasm of ascending colon
+  C18.3  Malignant neoplasm of hepatic flexure
+  C18.4  Malignant neoplasm of transverse colon
+  C18.5  Malignant neoplasm of splenic flexure
+  C18.6  Malignant neoplasm of descending colon
+  C18.7  Malignant neoplasm of sigmoid colon
+  C18.8  Overlapping malignant lesion of colon
+  C18.9  Malignant neoplasm of colon, unspecified part
+
+C19  Rectosigmoid junction cancer
+  C19    Malignant neoplasm of rectosigmoid junction
+
+C20  Rectal cancer
+  C20    Malignant neoplasm of rectum
+
+C21  Anal cancer (anus and anal canal)
+  C21.0  Malignant neoplasm of anus, unspecified
+  C21.1  Malignant neoplasm of anal canal
+  C21.2  Malignant neoplasm of cloacogenic zone
+  C21.8  Overlapping malignant lesion of rectum, anus and anal canal
+
+================================================================================
+LIVER AND BILIARY TRACT CANCER (C22–C24)
+================================================================================
+
+C22  Liver cancer
+  C22.0  Liver cell carcinoma
+  C22.1  Intrahepatic bile duct carcinoma
+  C22.2  Hepatoblastoma
+  C22.3  Angiosarcoma of liver
+  C22.4  Other sarcomas of liver
+  C22.7  Other specified carcinomas of liver
+  C22.9  Malignant neoplasm of liver, unspecified
+
+C23  Gallbladder cancer
+  C23    Malignant neoplasm of gallbladder
+
+C24  Biliary tract cancer (other and unspecified)
+  C24.0  Malignant neoplasm of extrahepatic bile duct
+  C24.1  Malignant neoplasm of ampulla of Vater
+  C24.8  Overlapping malignant lesion of biliary tract
+  C24.9  Malignant neoplasm of biliary tract, unspecified
+
+================================================================================
+PANCREATIC CANCER (C25)
+================================================================================
+
+C25  Pancreatic cancer
+  C25.0  Malignant neoplasm of head of pancreas
+  C25.1  Malignant neoplasm of body of pancreas
+  C25.2  Malignant neoplasm of tail of pancreas
+  C25.3  Malignant neoplasm of pancreatic duct
+  C25.4  Malignant neoplasm of endocrine pancreas
+  C25.7  Malignant neoplasm of other parts of pancreas
+  C25.8  Overlapping malignant lesion of pancreas
+  C25.9  Malignant neoplasm of pancreas, part unspecified
+
+================================================================================
+OTHER DIGESTIVE SYSTEM CANCER (C26)
+================================================================================
+
+C26  Other and ill-defined digestive organ cancer
+  C26.0  Malignant neoplasm of intestinal tract, part unspecified
+  C26.1  Malignant neoplasm of spleen
+  C26.8  Overlapping malignant lesion of digestive system
+  C26.9  Malignant neoplasm of ill-defined sites within the digestive system
+
+================================================================================
+RESPIRATORY SYSTEM CANCER (C30–C39)
+================================================================================
+
+C30  Nasal cavity and middle ear cancer
+  C30.0  Malignant neoplasm of nasal cavity
+  C30.1  Malignant neoplasm of middle ear
+
+C31  Paranasal sinus cancer
+  C31.0  Malignant neoplasm of maxillary sinus
+  C31.1  Malignant neoplasm of ethmoidal sinus
+  C31.2  Malignant neoplasm of frontal sinus
+  C31.3  Malignant neoplasm of sphenoidal sinus
+  C31.8  Overlapping malignant lesion of accessory sinuses
+  C31.9  Malignant neoplasm of accessory sinus, unspecified
+
+C32  Laryngeal cancer
+  C32.0  Malignant neoplasm of glottis
+  C32.1  Malignant neoplasm of supraglottis
+  C32.2  Malignant neoplasm of subglottis
+  C32.3  Malignant neoplasm of laryngeal cartilage
+  C32.8  Overlapping malignant lesion of larynx
+  C32.9  Malignant neoplasm of larynx, unspecified
+
+C33  Tracheal cancer
+  C33    Malignant neoplasm of trachea
+
+C34  LUNG CANCER
+  C34.0  Malignant neoplasm of main bronchus
+  C34.1  Malignant neoplasm of upper lobe, bronchus or lung
+  C34.2  Malignant neoplasm of middle lobe, bronchus or lung
+  C34.3  Malignant neoplasm of lower lobe, bronchus or lung
+  C34.8  Overlapping malignant lesion of bronchus and lung
+  C34.9  Malignant neoplasm of bronchus or lung, unspecified
+
+C37  Thymic cancer
+  C37    Malignant neoplasm of thymus
+
+C38  Heart, mediastinum and pleura cancer
+  C38.0  Malignant neoplasm of heart
+  C38.1  Malignant neoplasm of anterior mediastinum
+  C38.2  Malignant neoplasm of posterior mediastinum
+  C38.3  Malignant neoplasm of mediastinum, part unspecified
+  C38.4  Malignant neoplasm of pleura
+  C38.8  Overlapping malignant lesion of heart, mediastinum and pleura
+
+C39  Other respiratory and intrathoracic cancer
+  C39.0  Malignant neoplasm of upper respiratory tract, part unspecified
+  C39.8  Overlapping malignant lesion of respiratory and intrathoracic organs
+  C39.9  Malignant neoplasm of ill-defined sites within the respiratory system
+
+================================================================================
+BONE AND ARTICULAR CARTILAGE CANCER (C40–C41)
+================================================================================
+
+C40  Bone cancer (limbs)
+  C40.0  Malignant neoplasm of scapula and long bones of upper limb
+  C40.1  Malignant neoplasm of short bones of upper limb
+  C40.2  Malignant neoplasm of long bones of lower limb
+  C40.3  Malignant neoplasm of short bones of lower limb
+  C40.8  Overlapping malignant lesion of bone and articular cartilage of limbs
+  C40.9  Malignant neoplasm of bone and articular cartilage of limb, unspecified
+
+C41  Bone cancer (other and unspecified sites)
+  C41.0  Malignant neoplasm of bones of skull and face
+  C41.01 Malignant neoplasm of craniofacial bones
+  C41.02 Malignant neoplasm of maxillofacial bones
+  C41.1  Malignant neoplasm of mandible
+  C41.2  Malignant neoplasm of vertebral column
+  C41.3  Malignant neoplasm of ribs, sternum and clavicle
+  C41.4  Malignant neoplasm of pelvic bones, sacrum and coccyx
+  C41.8  Overlapping malignant lesion of bone and articular cartilage
+  C41.9  Malignant neoplasm of bone and articular cartilage, unspecified
+
+================================================================================
+SKIN CANCER (C43–C44)
+================================================================================
+
+C43  Malignant melanoma of skin
+  C43.0  Malignant melanoma of lip
+  C43.1  Malignant melanoma of eyelid, including canthus
+  C43.2  Malignant melanoma of ear and external auricular canal
+  C43.3  Malignant melanoma of other and unspecified parts of face
+  C43.4  Malignant melanoma of scalp and neck
+  C43.5  Malignant melanoma of trunk
+  C43.6  Malignant melanoma of upper limb, including shoulder
+  C43.7  Malignant melanoma of lower limb, including hip
+  C43.8  Overlapping malignant melanoma of skin
+  C43.9  Malignant melanoma of skin, unspecified
+
+C44  Other malignant neoplasms of skin
+  C44.0  Malignant neoplasm of skin of lip
+  C44.1  Malignant neoplasm of skin of eyelid, including canthus
+  C44.2  Malignant neoplasm of skin of ear and external auricular canal
+  C44.3  Malignant neoplasm of skin of other and unspecified parts of face
+  C44.4  Malignant neoplasm of skin of scalp and neck
+  C44.5  Malignant neoplasm of skin of trunk
+  C44.6  Malignant neoplasm of skin of upper limb, including shoulder
+  C44.7  Malignant neoplasm of skin of lower limb, including hip
+  C44.8  Overlapping malignant lesion of skin
+  C44.9  Malignant neoplasm of skin, unspecified
+
+================================================================================
+MESOTHELIOMA (C45)
+================================================================================
+
+C45  Mesothelioma
+  C45.0  Mesothelioma of pleura
+  C45.1  Mesothelioma of peritoneum
+  C45.2  Mesothelioma of pericardium

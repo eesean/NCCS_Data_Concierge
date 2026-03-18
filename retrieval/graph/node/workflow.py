@@ -1,11 +1,12 @@
 """
 ReAct agent: Schema is passed in via initial messages (fetched by pipeline before graph).
-LLM uses validate_sql_query and get_data only.
+LLM uses validate_sql_query, get_data, and get_cancer_info (when user asks about cancer).
 """
 from functools import lru_cache
 
 from retrieval.graph.tool.SQLvalidator import validate_sql_query
 from retrieval.graph.tool.get_data import get_data
+from retrieval.graph.tool.vectorRag import get_cancer_info
 from retrieval.graph.node.reasoner import make_reasoner
 from retrieval.llm import get_llm, DEFAULT_MODEL
 from typing import Annotated, TypedDict
@@ -24,7 +25,7 @@ class GraphState(TypedDict):
     messages: Annotated[list[AnyMessage], operator.add]
 
 
-reasoner_tool_list = [validate_sql_query, get_data]
+reasoner_tool_list = [validate_sql_query, get_data, get_cancer_info]
 
 
 # Module-level graph kept for notebook / backward-compat imports

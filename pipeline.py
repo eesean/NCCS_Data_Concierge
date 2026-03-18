@@ -5,7 +5,7 @@ from langchain_core.messages import ToolMessage,SystemMessage,HumanMessage
 
 from retrieval.graph.node.workflow import build_graph
 from retrieval.graph.outputParser import parse_data_json, extract_final_text, extract_data_json
-from retrieval.graph.tool.vectorRag import get_schema_context
+from retrieval.graph.tool.vectorRag import get_schema_context, get_sql_template
 from retrieval.llm import DEFAULT_MODEL
 
 
@@ -75,11 +75,16 @@ def _build_response(messages: list) -> Dict[str, Any]:
 
 
 def _get_schema_and_messages(question: str) -> list:
-    """Provides schema as System Context rather."""
+    """Provides schema and SQL prompt templates as System Context."""
     schema_data = get_schema_context(question)
-    
+    sql_template_data = get_sql_template(question)
+
     # Use a SystemMessage for context that should not be 'called' as a tool
-    system_msg = SystemMessage(content=f"You have access to the following database schema:\n{schema_data}")
+    system_content = (
+        f"You have access to the following database schema:\n{schema_data}\n\n"
+        f"Relevant SQL examples (few-shot) for similar questions:\n{sql_template_data}"
+    )
+    system_msg = SystemMessage(content=system_content)
     
     # Include the user's question so the graph knows what to process immediately
     user_msg = HumanMessage(content=question)

@@ -71,7 +71,8 @@ with st.sidebar:
 st.title("NCCS Data Concierge")
 
 _TOOL_LABELS = {
-    "get_schema_context": "Fetching schema context",
+    "get_schema_context": "Fetching schema context and sql templates",
+    "get_cancer_info": "Looking up cancer ICD codes",
     "validate_sql_query": "Validating SQL",
     "get_data": "Executing query",
 }

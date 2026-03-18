@@ -1,0 +1,166 @@
+# SQL Templates for Few-Shot Prompting
+# Converted from our_sql_template.txt
+# Table mappings: dx=condition_occurrence, demogr=person, measurement=measurement_mutation, drug=drug_exposure_cancerdrugs, surgery=procedure_occurrence
+# Use for RAG: retrieve relevant template(s) based on user question, then inject as few-shot examples
+
+---
+HEADER: How many deaths occurred in 2020?
+TIP: aggregation, filtering
+SQL:
+SELECT COUNT(*) AS death_count FROM death WHERE YEAR(death_date) = 2020;
+
+---
+HEADER: List the top 5 races based on number of person records. Order them in descending order of number of records.
+TIP: ordering, limit, aggregation
+SQL:
+SELECT race_source_value, COUNT(*) AS race_count
+FROM person GROUP BY race_source_value ORDER BY race_count DESC LIMIT 5;
+
+---
+HEADER: How many patients of each gender were diagnosed with ICD10 code C18.7 in 2021?
+TIP: join, aggregation
+SQL:
+SELECT gender_source_value, COUNT(*) AS gender_count FROM person LEFT JOIN condition_occurrence USING (person_id) WHERE ICD10 = 'C18.7' AND YEAR(condition_start_date) = 2021 GROUP BY gender_source_value;
+
+---
+HEADER: Count the number of drug exposure events that started and ended in the year 2020.
+TIP: filtering, datetime processing
+SQL:
+SELECT COUNT(*) AS count FROM drug_exposure_cancerdrugs WHERE YEAR(drug_exposure_start_date) = 2020 AND YEAR(drug_exposure_end_date) = 2020;
+
+---
+HEADER: How many conditions or diagnoses are colon related?
+TIP: regular expressions, aggregation, filtering
+SQL:
+SELECT COUNT(*) AS count FROM condition_occurrence WHERE condition_source_value LIKE '%colon%';
+
+---
+HEADER: How many male patients had conditions or diagnosis concerning the rectum?
+TIP: join, aggregation, regular expression, filtering
+SQL:
+SELECT COUNT(*) AS male_count FROM person JOIN condition_occurrence USING (person_id)
+WHERE person.gender_source_value = 'male' AND condition_occurrence.condition_source_value LIKE '%rectum%';
+
+---
+HEADER: How many active seniors aged 55 and above were prescribed with oxaliplatin?
+TIP: multiple joins, aggregations, datetime processing
+SQL:
+SELECT COUNT(*) AS total_records
+FROM drug_exposure_cancerdrugs LEFT JOIN person USING (person_id) LEFT JOIN death USING (person_id)
+WHERE death_date IS NOT NULL AND YEAR(NOW()) - year_of_birth >= 55;
+
+---
+HEADER: What is the most common cause of death?
+TIP: aggregation, ordering, limit
+SQL:
+SELECT cause_source_value, COUNT(*) AS death_count FROM death GROUP BY cause_source_value ORDER BY death_count DESC LIMIT 1;
+
+---
+HEADER: Consolidate number of measurement, procedure and drug exposure events respectively.
+TIP: union
+SQL:
+SELECT 'measurement' AS event_type, COUNT(*) AS event_count FROM measurement_mutation
+UNION ALL
+SELECT 'procedure' AS event_type, COUNT(*) AS event_count FROM procedure_occurrence
+UNION ALL
+SELECT 'drug_exposure' AS event_type, COUNT(*) AS event_count FROM drug_exposure_cancerdrugs;
+
+---
+HEADER: Create a table reporting the number of procedure and drug exposure events respectively in each institution.
+TIP: join, aggregation, nested queries
+SQL:
+SELECT t1.institution,
+t1.drug_exposure_events,
+COALESCE(t2.procedure_occurrence_events, 0) AS procedure_occurrence_events
+FROM (
+    SELECT institution,
+    COUNT(*) AS drug_exposure_events
+    FROM drug_exposure_cancerdrugs GROUP BY institution
+) t1
+LEFT JOIN (
+    SELECT institution,
+    COUNT(*) AS procedure_occurrence_events
+    FROM procedure_occurrence GROUP BY institution
+) t2
+USING (institution);
+
+---
+HEADER: Generate a racial demographic of active patients.
+TIP: join, aggregation, check null
+SQL:
+SELECT race_source_value, COUNT(*) AS count
+FROM person LEFT JOIN death USING (person_id)
+WHERE death.person_id IS NULL
+GROUP BY race_source_value;
+
+---
+HEADER: Rank the causes of death based on number of occurrences.
+TIP: rank, ordering
+SQL:
+SELECT cause_source_value,
+DENSE_RANK() OVER (ORDER BY COUNT(*) DESC) AS rank
+FROM death GROUP BY cause_source_value ORDER BY rank;
+
+---
+HEADER: How many deaths were associated with drug exposure events?
+TIP: join, check null
+SQL:
+SELECT COUNT(*) AS num_of_deaths
+FROM drug_exposure_cancerdrugs LEFT JOIN death USING (person_id)
+WHERE death.person_id IS NOT NULL;
+
+---
+HEADER: How many of the drugs prescribed are capecitabine?
+TIP: string handling, filtering, regular expression
+SQL:
+SELECT COUNT(*) AS count FROM drug_exposure_cancerdrugs WHERE LOWER(drug_source_value) LIKE '%capecitabine%';
+
+---
+HEADER: What are the different types of measurements used in the OMOP Common Data Model?
+TIP: distinct
+SQL:
+SELECT DISTINCT measurement_concept_name FROM measurement_mutation;
+
+---
+HEADER: Out of all the mutation measurements, how many of them did not detect mutations?
+TIP: filtering, regular expression, string handling
+SQL:
+SELECT COUNT(*) AS count FROM measurement_mutation
+WHERE LOWER(measurement_concept_name) LIKE '%mutation%' AND LOWER(value_source_value) LIKE '%no mutation detected%';
+
+---
+HEADER: How many procedures in 2020 lasted for longer than a week?
+TIP: datetime processing
+SQL:
+SELECT COUNT(*) AS count FROM procedure_occurrence
+WHERE DATEDIFF('day',
+    STRPTIME(procedure_datetime, '%d/%m/%Y %H:%M'),
+    STRPTIME(procedure_end_datetime, '%d/%m/%Y %H:%M')
+) > 3
+AND YEAR(STRPTIME(procedure_datetime, '%d/%m/%Y %H:%M')) = 2020
+AND YEAR(STRPTIME(procedure_end_datetime, '%d/%m/%Y %H:%M')) = 2020;
+
+---
+HEADER: How many drug exposure events lasted for longer than 2 weeks?
+TIP: datediff (datetime diff is more direct)
+SQL:
+SELECT COUNT(*) AS count FROM drug_exposure_cancerdrugs
+WHERE DATEDIFF('week', drug_exposure_start_date, drug_exposure_end_date) > 2;
+
+---
+HEADER: How many different types of diagnoses have been recorded under the ICD10 classification?
+TIP: count, distinct
+SQL:
+SELECT COUNT(DISTINCT ICD10) AS count FROM condition_occurrence;
+
+---
+HEADER: What percentage of drug exposure events recorded in 2019 involve inpatients?
+TIP: arithmetic, sum, case when, datetime processing
+SQL:
+SELECT ROUND(inpatient_count / NULLIF(total_count, 0) * 100, 2) AS inpatient_percentage
+FROM (
+    SELECT SUM(CASE WHEN LOWER(case_type) = 'inpatient' THEN 1 ELSE 0 END) AS inpatient_count,
+    COUNT(*) AS total_count
+    FROM drug_exposure_cancerdrugs
+    WHERE YEAR(drug_exposure_start_date) = 2019 AND YEAR(drug_exposure_end_date) = 2019
+);
