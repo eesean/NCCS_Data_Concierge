@@ -5,7 +5,7 @@ from typing import Any, List, Optional, Dict
 import time
 import uuid
 
-from SQLvalidator import (
+from retrieval.graph.tool.SQLvalidator import (
     connect_duckdb,
     load_parquet_views,
     PARQUETS,
@@ -36,7 +36,7 @@ class QueryExecutor:
     """
 
     def __init__(self, max_rows: int = 200):
-        self.con = connect_duckdb(use_db_file=False)
+        self.con = connect_duckdb()
         load_parquet_views(self.con, PARQUETS)
         self.max_rows = max_rows
 

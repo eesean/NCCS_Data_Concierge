@@ -1,7 +1,7 @@
 import json
 from typing import Any, Dict, Generator, List, Optional, Tuple
 
-from langchain_core.messages import ToolMessage
+from langchain_core.messages import ToolMessage,SystemMessage,HumanMessage
 
 from retrieval.graph.node.workflow import build_graph
 from retrieval.graph.outputParser import parse_data_json, extract_final_text, extract_data_json
@@ -73,17 +73,20 @@ def _build_response(messages: list) -> Dict[str, Any]:
     }
 
 
-def _get_schema_and_messages(question: str) -> list:
-    """Call get_schema_context once and return messages with schema for the graph."""
-    schema_result = get_schema_context(question)
-    schema_msg = ToolMessage(
-        content=str(schema_result),
-        name="get_schema_context",
-        tool_call_id="schema_preload",
-    )
-    return [schema_msg]
 
-def stream_question_agent(question: str, model: Optional[str] = None) -> Generator[str, None, None]:
+def _get_schema_and_messages(question: str) -> list:
+    """Provides schema as System Context rather."""
+    schema_data = get_schema_context(question)
+    
+    # Use a SystemMessage for context that should not be 'called' as a tool
+    system_msg = SystemMessage(content=f"You have access to the following database schema:\n{schema_data}")
+    
+    # Include the user's question so the graph knows what to process immediately
+    user_msg = HumanMessage(content=question)
+    
+    return [system_msg, user_msg] # Need to return system and user message for Open AI to work. 
+
+def stream_question_agent(question: str, model: Optional[str] = None, history: Optional[List[Dict]] = None) -> Generator[str, None, None]:
     """
     Generator that runs the ReAct agent and yields Server-Sent Events (SSE).
 
@@ -99,6 +102,35 @@ def stream_question_agent(question: str, model: Optional[str] = None) -> Generat
     try:
         # Get schema once before the graph (ensures single call)
         schema_messages = _get_schema_and_messages(question)
+
+        # Add conversation history
+        if history:
+            cleaned_history = []
+
+            for msg in history[:-1][-6:]:  
+                role = msg.get("role")
+                content = msg.get("content")
+
+                # User messages
+                if role == "user" and isinstance(content, str):
+                    cleaned_history.append(HumanMessage(content=content))
+    
+                # Assistant messages (only pass previous SQL, answers not included)
+                elif role == "assistant":
+                    if isinstance(content, dict):
+                        sql = content.get("final_sql")
+
+                        if sql:
+                            assistant_text = f"Previous SQL query:\n{sql}"
+                            cleaned_history.append(SystemMessage(content=assistant_text))
+
+            # Insert history before the current question
+            schema_messages = (
+                [schema_messages[0]]
+                + cleaned_history
+                + [schema_messages[-1]]
+            )
+
         graph = build_graph(model or DEFAULT_MODEL)
         initial_state = {"query": question, "final_answer": "", "messages": schema_messages}
     except Exception as e:
@@ -116,8 +148,8 @@ def stream_question_agent(question: str, model: Optional[str] = None) -> Generat
         for chunk in graph.stream(
             initial_state,
             stream_mode="updates",
-            config={"recursion_limit": 50},
-        ):
+            config={"recursion_limit": 20},
+        ):  
             for _node, node_output in chunk.items():
                 new_msgs = node_output.get("messages", [])
                 all_messages.extend(new_msgs)
@@ -125,6 +157,7 @@ def stream_question_agent(question: str, model: Optional[str] = None) -> Generat
                 for msg in new_msgs:
                     msg_type = type(msg).__name__
                     if msg_type == "AIMessage" and getattr(msg, "tool_calls", None):
+                        #print("Tools: " + json.dumps(msg.tool_calls, indent=2, default=str))
                         for tc in msg.tool_calls:
                             yield sse({"type": "step_call", "tool": tc["name"]})
                     elif msg_type == "ToolMessage":
@@ -132,10 +165,75 @@ def stream_question_agent(question: str, model: Optional[str] = None) -> Generat
                         content = str(msg.content)
                         snippet = content[:200] + "…" if len(content) > 200 else content
                         yield sse({"type": "step_result", "tool": tool_name, "snippet": snippet})
+
     except Exception as e:
         yield sse({"type": "error", "status": "error", "message": "Agent execution failed.", "reasons": [str(e)]})
         return
+    
+    # --- Token & Cost Tracking Logic --- HQ added for metrics extractions
+    input_tokens = 0
+    output_tokens = 0
+    total_tokens = 0
+    upstream_cost = 0.0
+    upstream_prompt_cost = 0.0
+    upstream_completion_cost = 0.0
 
+    for msg in all_messages:
+        # 1. Standard Token Usage
+        if hasattr(msg, "usage_metadata") and msg.usage_metadata:
+            meta = msg.usage_metadata
+            input_tokens += meta.get("input_tokens", 0)
+            output_tokens += meta.get("output_tokens", 0)
+            total_tokens += meta.get("total_tokens", 0)
+
+        # 2. Custom Cost Details (Provider-specific metadata)
+        if hasattr(msg, "response_metadata") and msg.response_metadata:
+            token_usage = msg.response_metadata.get("token_usage", {})
+            cost_details = token_usage.get("cost_details", {})
+            
+            upstream_cost += float(token_usage.get("cost", 0.0))
+            upstream_prompt_cost += float(cost_details.get("upstream_inference_prompt_cost", 0.0))
+            upstream_completion_cost += float(cost_details.get("upstream_inference_completions_cost", 0.0))
+
+    # --- SQL and Final Response Build ---
+    final_sql = get_latest_sql(all_messages)
     final = _build_response(all_messages)
+    
+    # Inject aggregated metadata
     final["type"] = "done"
+    final["final_sql"] = final_sql
+    final["input_tokens"] = input_tokens
+    final["output_tokens"] = output_tokens
+    final["total_tokens"] = total_tokens
+    final["cost"] = upstream_cost
+    final["prompt_cost"] = upstream_prompt_cost
+    final["completion_cost"] = upstream_completion_cost
+
     yield sse(final)
+
+import re
+
+def get_latest_sql(all_messages: list) -> str: ## For latest SQL extraction
+    """
+    1. Prioritizes structured tool_calls (Index 4 style).
+    2. Falls back to Regex extraction from content (Index 6 style).
+    """
+    # 1. Search for structured tool calls (Most reliable)
+    for msg in reversed(all_messages):
+        if hasattr(msg, "tool_calls") and msg.tool_calls:
+            for tc in msg.tool_calls:
+                # Check for any tool that executes SQL
+                if tc.get("name") in ["get_data", "sql_db_query", "query_sql_db", "execute_sql"]:
+                    # Return the exact SQL string from 'args'
+                    return str(tc.get("args", {}).get("sql", ""))
+
+    # 2. Fallback to Regex for Index [6] style
+    sql_pattern = re.compile(r"SQL:\s*(.*?)(?:\n|$)", re.IGNORECASE | re.DOTALL)
+    for msg in reversed(all_messages):
+        content = getattr(msg, "content", "")
+        if isinstance(content, str):
+            match = sql_pattern.search(content)
+            if match:
+                return match.group(1).strip()
+    
+    return "No SQL query found in history."

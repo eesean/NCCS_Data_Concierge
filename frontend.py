@@ -20,12 +20,53 @@ MODEL_OPTIONS = [
     "stepfun/step-3.5-flash:free",
     "z-ai/glm-4.5-air:free",
     "nvidia/nemotron-3-nano-30b-a3b:free"
+
 ]
+
+MODEL_DESCRIPTIONS = {
+    "arcee-ai/trinity-large-preview:free": (
+        "Good for relatively complex queries as it has stronger reasoning performance and is more reliable at multi-step SQL planning."
+    ),
+    "stepfun/step-3.5-flash:free": (
+        "Good for schema-heavy queries where there might be more tables and columns as it is optimized for speed and long-context."
+    ),
+    "z-ai/glm-4.5-air:free": (
+        "Good for multi-step workflows as it is designed for agentic use and typically handles tool usage and structured steps more consistently."
+    ),
+    "nvidia/nemotron-3-nano-30b-a3b:free": (
+        "Good for relatively straightforward queries like counts or filters as it is an efficient model that has good latency."
+    ),
+}
+# Build display labels (what users see)
+MODEL_LABELS = {
+    m: f"{m} — {MODEL_DESCRIPTIONS.get(m, '')}"
+    for m in MODEL_OPTIONS
+}
 
 with st.sidebar:
     st.header("Settings")
+    # model selection
     selected_model = st.selectbox("AI model", MODEL_OPTIONS, index=0)
-    st.caption("Only models with tool-calling support work. Add more from openrouter.ai/collections/tool-calling-models")
+
+    st.caption(
+        "Only models with tool-calling support work. Add more from openrouter.ai/collections/tool-calling-models"
+    )
+
+    # model guide with descriptions visible 
+    st.markdown("### Model guide")
+    for m in MODEL_OPTIONS:
+        desc = MODEL_DESCRIPTIONS.get(m, "")
+        st.markdown(
+            f"""
+            <div style="margin: 6px 0 10px 0;">
+              <div style="font-weight: 600;">{m}</div>
+              <div style="color: #999; font-size: 0.85em; line-height: 1.25;">
+                {desc}
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
 st.title("NCCS Data Concierge")
 
@@ -57,13 +98,11 @@ def _render_steps(steps: list):
 
 def render_assistant_payload(resp: dict):
     _render_steps(resp.get("steps", []))
-
+    print("DEBUG RESPONSE:", resp)
     if resp.get("status") != "ok":
-        st.error("**Error**")
-        st.write(resp.get("message", "An error occurred."))
-        if resp.get("reasons"):
-            st.code("\n".join(resp["reasons"]), language="text")
-        st.info("💡 **Try again:** Use a different model or simplify your question.")
+        st.info(
+            "💡 **Try again:** Use a different model or simplify your question."
+        )
         return
 
     st.write(resp.get("message", ""))
@@ -113,9 +152,9 @@ if prompt and not st.session_state.processing:
         try:
             r = requests.post(
                 f"{API_URL}/ask/stream",
-                json={"question": prompt, "model": selected_model},
+                json={"question": prompt, "model": selected_model, "history": st.session_state.messages},
                 stream=True,
-                timeout=300,
+                timeout=120,
             )
             r.raise_for_status()
 
