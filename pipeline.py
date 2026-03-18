@@ -1,4 +1,5 @@
 import json
+import time
 from typing import Any, Dict, Generator, List, Optional, Tuple
 
 from langchain_core.messages import ToolMessage,SystemMessage,HumanMessage
@@ -6,6 +7,7 @@ from langchain_core.messages import ToolMessage,SystemMessage,HumanMessage
 from retrieval.graph.node.workflow import build_graph
 from retrieval.graph.outputParser import parse_data_json, extract_final_text, extract_data_json
 from retrieval.graph.tool.vectorRag import get_schema_context, get_sql_template
+from retrieval.graph.tool.evaluate_update import evaluate_live_query
 from retrieval.llm import DEFAULT_MODEL
 
 
@@ -103,7 +105,7 @@ def stream_question_agent(question: str, model: Optional[str] = None, history: O
     """
     def sse(data: dict) -> str:
         return f"data: {json.dumps(data)}\n\n"
-
+    start_time = time.perf_counter() ## Timer starts for latency
     try:
         # Get schema once before the graph (ensures single call)
         schema_messages = _get_schema_and_messages(question)
@@ -214,6 +216,20 @@ def stream_question_agent(question: str, model: Optional[str] = None, history: O
     final["prompt_cost"] = upstream_prompt_cost
     final["completion_cost"] = upstream_completion_cost
 
+    latency = time.perf_counter() - start_time ## Timer Ends
+
+    ## Run evaluation based off the query
+    ## It will updates the live scoreboard
+    try:
+        evaluate_live_query(
+            prompt=question,
+            model=model or DEFAULT_MODEL,
+            generated_sql=final_sql,
+            latency=latency,
+            metrics=final
+        )
+    except Exception as log_err:
+        print(f"Failed to log live query: {log_err}")
     yield sse(final)
 
 import re
