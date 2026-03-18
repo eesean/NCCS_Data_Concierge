@@ -44,7 +44,7 @@ The API will be available at `http://127.0.0.1:8000`.
 
 ```bash
 source venv/bin/activate   # On Windows: .\venv\Scripts\activate
-streamlit run frontend.py
+streamlit run NCCS_Query_Assistant.py
 ```
 
 The frontend will open in your browser (typically `http://localhost:8501`).
