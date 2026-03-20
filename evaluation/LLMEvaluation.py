@@ -40,6 +40,7 @@ models = [
     #"z-ai/glm-4.5-air:free",
     #"nvidia/nemotron-3-nano-30b-a3b:free"
 ]
+PENALTY_SCORE = 0.2
 
 def evaluate_llm_performance(models, eval_dataset, qe):
     results = []
@@ -112,6 +113,7 @@ def evaluate_llm_performance(models, eval_dataset, qe):
 
                 # 4. Calculate total latency after stream concludes
                 latency = time.perf_counter() - start_time
+                validation_tries = 0
 
                 # 5. Extract results safely
                 if error_payload:
@@ -125,6 +127,7 @@ def evaluate_llm_performance(models, eval_dataset, qe):
                     prompt_cost = final_payload.get("prompt_cost", 0.0)
                     completion_cost = final_payload.get("completion_cost", 0.0)
                     total_cost = final_payload.get("cost", 0.0)
+                    validation_tries = final_payload.get("validation_tries", 0)
                 else:
                     # Handle the "Max loop reached" or crash scenario
                     generated_sql = "ERROR"
@@ -137,7 +140,7 @@ def evaluate_llm_performance(models, eval_dataset, qe):
                 
                 # 2. Extract Token and Cost Data
                 row_data["Generated SQL"] = generated_sql
-                row_data["Latency (s)"] = round(latency, 3)
+                row_data["Latency (s)"] = round(latency * (1 + ((validation_tries - 1) * PENALTY_SCORE)), 3)
                 row_data["Input Tokens"] = input_tokens
                 row_data["Output Tokens"] = output_tokens
                 row_data["Total Tokens"] = total_tokens
@@ -176,8 +179,7 @@ def evaluate_llm_performance(models, eval_dataset, qe):
     columns_to_normalize = ["Latency (s)", "Complexity Score", "Log Transformed Tokens", "F1 Score", "Semantic Score"]
     for column in columns_to_normalize:
         evaluation_df[f"Normalized {column}"] = normalize_score(column, evaluation_df)
-    normalized_columns = [f"Normalized {col}" for col in columns_to_normalize]
-    evaluation_df["Summary Score"] = evaluation_df[normalized_columns].mean(axis=1)
+    evaluation_df["Efficiency Ratio"] = calculate_efficiency_ratio(evaluation_df)
     return evaluation_df
 
 def normalize_score(column, df):
@@ -190,6 +192,14 @@ def normalize_score(column, df):
         return df[column].apply(lambda x: (x - min_score) / (max_score - min_score))
     else: # reverse normalization applied (lower is better)
         return df[column].apply(lambda x: (max_score - x) / (max_score - min_score))
+    
+def calculate_efficiency_ratio(df):
+    numerator = df["Normalized F1 Score"] * df["Normalized Semantic Score"]
+    denominator = df["Normalized Latency (s)"] * df["Normalized Complexity Score"] * df["Normalized Log Transformed Tokens"]
+    # To avoid division by zero, we can add a small epsilon to the denominator
+    epsilon = 1e-6
+    df['Efficiency Ratio'] = numerator / (denominator + epsilon)
+    return df['Efficiency Ratio']
 
 test_cases = [
     {

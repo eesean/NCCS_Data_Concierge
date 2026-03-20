@@ -1,3 +1,4 @@
+import math
 import time
 import pandas as pd
 from datetime import datetime
@@ -8,11 +9,14 @@ from evaluation.SQLEvaluator import SQLComplexityEvaluator
 print("Importing SematicScoring" )
 from SematicScoring import calculate_similarity
 
+PENALTY_SCORE = 0.2
+
 def evaluate_live_query(prompt: str, model: str, generated_sql: str, latency: float, metrics: dict):
     """
     Evaluates a single live query on the fly and logs it to a CSV.
     """
     evaluator = SQLComplexityEvaluator() # Assuming this is globally available or imported
+    validation_tries = metrics.get("validation_tries", 0)
     
     # 1. Set up the base logging dictionary
     row_data = {
@@ -20,7 +24,7 @@ def evaluate_live_query(prompt: str, model: str, generated_sql: str, latency: fl
         "Model": model,
         "Prompt": prompt,
         "Generated SQL": generated_sql if generated_sql else "ERROR",
-        "Latency (s)": round(latency, 3),
+        "Latency (s)": round(latency * (1 + ((validation_tries - 1) * PENALTY_SCORE)), 3),
         "Input Tokens": metrics.get("input_tokens", 0),
         "Output Tokens": metrics.get("output_tokens", 0),
         "Total Tokens": metrics.get("total_tokens", 0),
@@ -54,7 +58,11 @@ def evaluate_live_query(prompt: str, model: str, generated_sql: str, latency: fl
     # 3. Append to CSV (Create if it doesn't exist)
     csv_path = "live_query_logs.csv"
     df = pd.DataFrame([row_data])
-    
+    df["Log Transformed Tokens"] = df["Total Tokens"].apply(lambda x: round(math.log(x + 1), 3)) # Log transform for better scaling
+    columns_to_normalize = ["Latency (s)", "Complexity Score", "Log Transformed Tokens", "Semantic Score"]
+    for column in columns_to_normalize:
+        df[f"Normalized {column}"] = normalize_score(column, df)
+
     # If file doesn't exist, write headers. Otherwise, append without headers.
     if not os.path.isfile(csv_path):
         df.to_csv(csv_path, index=False)
@@ -62,3 +70,14 @@ def evaluate_live_query(prompt: str, model: str, generated_sql: str, latency: fl
         df.to_csv(csv_path, mode='a', header=False, index=False)
 
     return row_data
+
+def normalize_score(column, df):
+    min_score = df[column].min()
+    max_score = df[column].max()
+    min_max_columns = ["Semantic Score", "F1 Score"]
+    if max_score - min_score == 0:
+        return df[column].apply(lambda x: 0.5) # If all scores are the same, assign 0.5
+    elif column in min_max_columns:
+        return df[column].apply(lambda x: (x - min_score) / (max_score - min_score))
+    else: # reverse normalization applied (lower is better)
+        return df[column].apply(lambda x: (max_score - x) / (max_score - min_score))
