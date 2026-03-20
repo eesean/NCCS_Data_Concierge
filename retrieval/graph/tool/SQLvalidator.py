@@ -30,7 +30,6 @@ PARQUETS: Dict[str, Path] = {
     "death": DATA_DIR / "death.parquet",
 }
 
-
 # ----------------------------
 # Result structure
 # ----------------------------
@@ -67,6 +66,24 @@ def load_parquet_views(con, parquet_map):
             );
         """)
 
+def get_schema_map(con: duckdb.DuckDBPyConnection, parquet_map: Dict[str, Path]) -> Dict[str, Set[str]]:
+    schema_map: Dict[str, Set[str]] = {}
+
+    for table in parquet_map.keys():
+        rows = con.execute(f"DESCRIBE {table}").fetchall()
+        schema_map[table] = {row[0] for row in rows}
+
+    return schema_map
+
+
+def flatten_schema_map(schema_map: Dict[str, Set[str]]) -> Set[str]:
+    all_columns: Set[str] = set()
+
+    for cols in schema_map.values():
+        all_columns.update(cols)
+
+    return all_columns
+
 
 # ----------------------------
 # AST parsing helpers
@@ -100,7 +117,20 @@ def extract_tables(tree: exp.Expression) -> List[str]:
 
 
 def extract_columns(tree: exp.Expression) -> List[str]:
-    return sorted({c.name for c in tree.find_all(exp.Column)})
+    alias_names = set()
+
+    # collect aliases created in SELECT expressions
+    for alias in tree.find_all(exp.Alias):
+        if alias.alias:
+            alias_names.add(alias.alias)
+
+    columns = set()
+    for col in tree.find_all(exp.Column):
+        col_name = col.name
+        if col_name not in alias_names:
+            columns.add(col_name)
+
+    return sorted(columns)
 
 
 def count_joins(tree: exp.Expression) -> int:
@@ -297,10 +327,16 @@ def validate_sql_query(sql: str) -> str:
     Call this after generating SQL to confirm it is safe before finalizing.
     Returns a summary of issues found, or confirms the query is valid."""
     con = _get_connection()
+
+    allow_tables = set(PARQUETS.keys())
+    schema_map = get_schema_map(con, PARQUETS)
+    allow_columns = flatten_schema_map(schema_map)
+
     result = validate_sql(
         con=con,
         sql=sql,
-        allow_tables=set(PARQUETS.keys()),
+        allow_tables=allow_tables,
+        allow_columns=allow_columns,
         require_limit=False,
         block_select_star=True,
     )
@@ -340,3 +376,47 @@ def validate_sql_query(sql: str) -> str:
         )
 
     return f"SQL is valid. Tables referenced: {tables}. Proceed to get_data."
+
+# Testing
+# if __name__ == "__main__":
+#     con = _get_connection()
+
+#     allow_tables = set(PARQUETS.keys())
+#     schema_map = get_schema_map(con, PARQUETS)
+#     allow_columns = flatten_schema_map(schema_map)
+
+#     test_queries = {
+#         "query_1": """
+#             SELECT COUNT(person_id) AS count
+#             FROM (
+#                 SELECT *,
+#                        trim(split(condition_source_value, '||')[4]) as Histo2
+#                 FROM condition_occurrence
+#             )
+#             WHERE Histo2 ILIKE '%Signet ring%'
+#         """,
+#         "query_2": """
+#             SELECT COUNT(*) as n, race_source_value
+#             FROM person
+#             GROUP BY race_source_value
+#             ORDER BY n DESC
+#         """,
+#     }
+
+#     for name, sql in test_queries.items():
+#         print(f"\n=== {name} ===")
+#         result = validate_sql(
+#             con=con,
+#             sql=sql,
+#             allow_tables=allow_tables,
+#             allow_columns=allow_columns,
+#             require_limit=False,
+#             block_select_star=True,
+#         )
+#         print("SQL:")
+#         print(sql)
+#         print("is_safe:", result.is_safe)
+#         print("safety_reasons:", result.safety_reasons)
+#         print("is_performant:", result.is_performant)
+#         print("performance_reasons:", result.performance_reasons)
+#         print("error:", result.error)
