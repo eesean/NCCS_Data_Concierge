@@ -145,6 +145,7 @@ def stream_question_agent(question: str, model: Optional[str] = None, history: O
         return
 
     all_messages: List[Any] = list(schema_messages)
+    validation_tries = 0
 
     try:
         # Emit schema step (called outside graph)
@@ -166,9 +167,12 @@ def stream_question_agent(question: str, model: Optional[str] = None, history: O
                     if msg_type == "AIMessage" and getattr(msg, "tool_calls", None):
                         #print("Tools: " + json.dumps(msg.tool_calls, indent=2, default=str))
                         for tc in msg.tool_calls:
-                            yield sse({"type": "step_call", "tool": tc["name"]})
+                            tool_name = tc.get("name")
+                            yield sse({"type": "step_call", "tool": tool_name})
                     elif msg_type == "ToolMessage":
                         tool_name = getattr(msg, "name", "unknown")
+                        if tool_name == "validate_sql_query":
+                            validation_tries += 1
                         content = str(msg.content)
                         snippet = content[:200] + "…" if len(content) > 200 else content
                         yield sse({"type": "step_result", "tool": tool_name, "snippet": snippet})
@@ -215,6 +219,7 @@ def stream_question_agent(question: str, model: Optional[str] = None, history: O
     final["cost"] = upstream_cost
     final["prompt_cost"] = upstream_prompt_cost
     final["completion_cost"] = upstream_completion_cost
+    final["validation_tries"] = validation_tries
 
     latency = time.perf_counter() - start_time ## Timer Ends
 
