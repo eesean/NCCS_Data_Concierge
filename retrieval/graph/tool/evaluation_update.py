@@ -62,6 +62,7 @@ def evaluate_live_query(prompt: str, model: str, generated_sql: str, latency: fl
     columns_to_normalize = ["Latency (s)", "Complexity Score", "Log Transformed Tokens", "Semantic Score"]
     for column in columns_to_normalize:
         df[f"Normalized {column}"] = normalize_score(column, df)
+    df["Efficiency Score"] = 0.6 * df["Normalized Semantic Score"] + 0.1 * df["Normalized Latency (s)"] + 0.1 * df["Normalized Log Transformed Tokens"] + 0.2 * df["Normalized Complexity Score"]
 
     # If file doesn't exist, write headers. Otherwise, append without headers.
     if not os.path.isfile(csv_path):
@@ -74,10 +75,9 @@ def evaluate_live_query(prompt: str, model: str, generated_sql: str, latency: fl
 def normalize_score(column, df):
     min_score = df[column].min()
     max_score = df[column].max()
-    min_max_columns = ["Semantic Score", "F1 Score"]
     if max_score - min_score == 0:
         return df[column].apply(lambda x: 0.5) # If all scores are the same, assign 0.5
-    elif column in min_max_columns:
+    elif column == "Semantic Score":
         return df[column].apply(lambda x: (x - min_score) / (max_score - min_score))
     else: # reverse normalization applied (lower is better)
         return df[column].apply(lambda x: (max_score - x) / (max_score - min_score))

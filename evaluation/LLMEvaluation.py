@@ -176,30 +176,21 @@ def evaluate_llm_performance(models, eval_dataset, qe):
 
     evaluation_df = pd.DataFrame(results)
     evaluation_df["Log Transformed Tokens"] = evaluation_df["Total Tokens"].apply(lambda x: round(math.log(x + 1), 3)) # Log transform for better scaling
-    columns_to_normalize = ["Latency (s)", "Complexity Score", "Log Transformed Tokens", "F1 Score", "Semantic Score"]
+    columns_to_normalize = ["Latency (s)", "Complexity Score", "Log Transformed Tokens", "F1 Score"]
     for column in columns_to_normalize:
         evaluation_df[f"Normalized {column}"] = normalize_score(column, evaluation_df)
-    evaluation_df["Efficiency Ratio"] = calculate_efficiency_ratio(evaluation_df)
+    evaluation_df["Efficiency Score"] = 0.6 * evaluation_df["Normalized F1 Score"] + 0.1 * evaluation_df["Normalized Latency (s)"] + 0.1 * evaluation_df["Normalized Log Transformed Tokens"] + 0.2 * evaluation_df["Normalized Complexity Score"]
     return evaluation_df
 
 def normalize_score(column, df):
     min_score = df[column].min()
     max_score = df[column].max()
-    min_max_columns = ["Semantic Score", "F1 Score"]
     if max_score - min_score == 0:
         return df[column].apply(lambda x: 0.5) # If all scores are the same, assign 0.5
-    elif column in min_max_columns:
+    elif column == "F1 Score":
         return df[column].apply(lambda x: (x - min_score) / (max_score - min_score))
     else: # reverse normalization applied (lower is better)
         return df[column].apply(lambda x: (max_score - x) / (max_score - min_score))
-    
-def calculate_efficiency_ratio(df):
-    numerator = df["Normalized F1 Score"] * df["Normalized Semantic Score"]
-    denominator = df["Normalized Latency (s)"] * df["Normalized Complexity Score"] * df["Normalized Log Transformed Tokens"]
-    # To avoid division by zero, we can add a small epsilon to the denominator
-    epsilon = 1e-6
-    df['Efficiency Ratio'] = numerator / (denominator + epsilon)
-    return df['Efficiency Ratio']
 
 test_cases = [
     {
