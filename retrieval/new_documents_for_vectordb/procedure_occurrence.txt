@@ -1,0 +1,117 @@
+TABLE: procedure_occurrence (785 rows)
+
+COLUMN NAME: procedure_occurrence_id (Use this when querying information)
+  Data Element: Table ID
+  Description: Event id in procedure_occurrence table
+  Datatype: integer
+  Key: —
+
+COLUMN NAME: person_id (Use this when querying information)
+  Data Element: Patient ID
+  Description: Unique deidentified number used to identify a patient
+  Datatype: integer
+  Key: FK to person
+
+COLUMN NAME: procedure_concept_id (Use this when querying information)
+  Data Element: Procedure Concept ID (Sx/RT)
+  Description: Concept id of the procedure (surgery or radiotherapy)
+  Datatype: integer
+  Key: —
+
+COLUMN NAME: procedure_concept_name (Use this when querying information)
+  Data Element: Procedure Name (Sx/RT)
+  Description: OMOP concept name corresponding to the concept ids of each procedure.
+  Datatype: varchar(50)
+  Key: —
+
+COLUMN NAME: procedure_source_value (Use this when querying information)
+  Data Element: Procedure Name (Sx/RT)
+  Description: Source description of surgery or radiotherapy procedure (from ehints or DCI)
+  Datatype: varchar(50)
+  Key: —
+
+COLUMN NAME: procedure_date (Use this when querying information)
+  Data Element: Start Date of Procedure
+  Description: Start date of each procedure
+  Datatype: date
+  Key: —
+
+COLUMN NAME: procedure_datetime (Use this when querying information)
+  Data Element: Start Date and Time of Procedure
+  Description: Start date and time of each procedure.
+  Datatype: datetime
+  Key: —
+
+COLUMN NAME: procedure_end_date (Use this when querying information)
+  Data Element: End Date of Procedure
+  Description: End date of each procedure
+  Datatype: date
+  Key: —
+
+COLUMN NAME: procedure_end_datetime (Use this when querying information)
+  Data Element: End Date and Time of Procedure
+  Description: End date and time of each procedure.
+  Datatype: datetime
+  Key: —
+
+COLUMN NAME: procedure_type_concept_id (Use this when querying information)
+  Data Element: EHR
+  Description: Concept id for EHR
+  Datatype: integer
+  Key: —
+
+COLUMN NAME: modifier_concept_id (Use this when querying information)
+  Data Element: Site of RT
+  Description: Concept id for the respective site of radiotherapy.
+  Datatype: integer
+  Key: —
+
+COLUMN NAME: modifier_concept_name (Use this when querying information)
+  Data Element: Concept ID for Site of RT
+  Description: OMOP concept name that corresponds to the concept id of radiotherapy site.
+  Datatype: varchar(50)
+  Key: —
+
+COLUMN NAME: modifier_source_value (Use this when querying information)
+  Data Element: Site of RT
+  Description: Source description of RT site
+  Datatype: varchar(50)
+  Key: —
+
+COLUMN NAME: quantity (Use this when querying information)
+  Data Element: Dose and Fraction of RT
+  Description: Radiotherapy delivered dose (delivered fraction)
+  Datatype: integer
+  Key: —
+
+COLUMN NAME: intent (Use this when querying information)
+  Data Element: Intent of Procedure
+  Description: Whether the Procedure is curative or palliative
+  Datatype: varchar(50)
+  Key: —
+
+COLUMN NAME: visit_occurrence_id (Use this when querying information)
+  Data Element: Table ID
+  Description: Corresponding visit the procedure was administrated. Linkage to visit_occurrence table.
+  Datatype: integer
+  Key: —
+
+COLUMN NAME: visit_detail_id (Use this when querying information)
+  Data Element: Table ID
+  Description: Corresponding visit the procedure was administrated. Linkage to visit_occurrence table.
+  Datatype: integer
+  Key: —
+
+COLUMN NAME: case_number (Use this when querying information)
+  Data Element: Corresponding number no
+  Description: Corresponding case number the procedure was administrated. For both inpatient and outpatient visits.
+  Datatype: varchar(50)
+  Key: —
+
+COLUMN NAME: institution (Use this when querying information)
+  Data Element: Instituition
+  Description: —
+  Datatype: varchar(50)
+  Key: —
+
+JOINS: Join to person via procedure_occurrence.person_id = person.person_id (where person_id is present). Link visits via visit_occurrence_id / visit_detail_id as described in columns.

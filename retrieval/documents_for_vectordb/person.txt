@@ -1,0 +1,38 @@
+TABLE: person (100 rows)
+
+COLUMN NAME: person_id (Use this when querying information)
+  Description: Unique deidentified patient identifier.
+  Datatype: integer
+  Key: PK
+
+COLUMN NAME: gender_source_value (Use this when querying information)
+  Description: Biological sex from source data (e.g. male, female).
+  Datatype: varchar(50)
+  Key: —
+
+COLUMN NAME: year_of_birth (Use this when querying information)
+  Description: Year of birth of patient.
+  Datatype: integer
+  Key: —
+
+COLUMN NAME: month_of_birth (Use this when querying information)
+  Description: Month of birth of patient.
+  Datatype: integer
+  Key: —
+
+COLUMN NAME: gender_concept_id (Use this when querying information)
+  Description: OMOP concept ID for biological sex at birth.
+  Datatype: integer
+  Key: —
+
+COLUMN NAME: race_concept_id (Use this when querying information)
+  Description: OMOP concept ID for race or ethnic background.
+  Datatype: integer
+  Key: —
+
+COLUMN NAME: race_source_value (Use this when querying information)
+  Description: Race from source data as verbatim value.
+  Datatype: varchar(50)
+  Key: —
+
+JOINS: Person is the central table. All other tables join via person_id: condition_occurrence.person_id, death.person_id, drug_exposure_cancerdrugs.person_id, measurement_mutation.person_id, procedure_occurrence.person_id.

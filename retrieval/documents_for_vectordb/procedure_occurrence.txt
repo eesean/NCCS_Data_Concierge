@@ -1,0 +1,113 @@
+TABLE: procedure_occurrence (785 rows)
+
+COLUMN NAME: procedure_occurrence_id (Use this when querying information)
+  Description: Unique identifier for each procedure record.
+  Datatype: integer
+  Key: PK
+
+COLUMN NAME: person_id (Use this when querying information)
+  Description: Deidentified patient identifier. Links to person.
+  Datatype: integer
+  Key: FK to person
+
+COLUMN NAME: institution (Use this when querying information)
+  Description: Institution where procedure was performed (e.g. SGH).
+  Datatype: varchar(50)
+  Key: —
+
+COLUMN NAME: procedure_date (Use this when querying information)
+  Description: Start date of procedure.
+  Datatype: date
+  Key: —
+
+COLUMN NAME: procedure_datetime (Use this when querying information)
+  Description: Start date and time of procedure.
+  Datatype: datetime
+  Key: —
+
+COLUMN NAME: procedure_end_date (Use this when querying information)
+  Description: End date of procedure.
+  Datatype: date
+  Key: —
+
+COLUMN NAME: procedure_end_datetime (Use this when querying information)
+  Description: End date and time of procedure.
+  Datatype: datetime
+  Key: —
+
+COLUMN NAME: procedure_source_value (Use this when querying information)
+  Description: Verbatim procedure description from source (ehints/DCI).
+  Datatype: varchar(50)
+  Key: —
+
+COLUMN NAME: Surgery Procedure Code (Use this when querying information)
+  Description: Surgery/procedure code from source (e.g. SF706A).
+  Datatype: varchar(50)
+  Key: —
+
+COLUMN NAME: TOSP (Use this when querying information)
+  Description: TOSP classification code.
+  Datatype: varchar(50)
+  Key: —
+
+COLUMN NAME: Surgery TOSP (Use this when querying information)
+  Description: Surgery TOSP classification.
+  Datatype: varchar(50)
+  Key: —
+
+COLUMN NAME: procedure_concept_id (Use this when querying information)
+  Description: OMOP procedure_concept_id for procedure (surgery or radiotherapy).
+  Datatype: integer
+  Key: —
+
+COLUMN NAME: procedure_concept_name (Use this when querying information)
+  Description: OMOP procedure_concept_name for procedure.
+  Datatype: varchar(50)
+  Key: —
+
+COLUMN NAME: modifier_concept_id (Use this when querying information)
+  Description: OMOP modifier_concept_id for radiotherapy site.
+  Datatype: integer
+  Key: —
+
+COLUMN NAME: modifier_concept_name (Use this when querying information)
+  Description: OMOP modifier_concept_namefor radiotherapy site.
+  Datatype: varchar(50)
+  Key: —
+
+COLUMN NAME: quantity (Use this when querying information)
+  Description: Radiotherapy delivered dose (fraction count).
+  Datatype: integer
+  Key: —
+
+COLUMN NAME: visit_occurrence_id (Use this when querying information)
+  Description: Visit during which procedure was performed. Links to visit_occurrence.
+  Datatype: integer
+  Key: FK to visit_occurrence
+
+COLUMN NAME: visit_detail_id (Use this when querying information)
+  Description: Visit detail during which procedure occurred. Links to visit_detail.
+  Datatype: integer
+  Key: FK to visit_detail
+
+COLUMN NAME: modifier_source_value (Use this when querying information)
+  Description: Verbatim radiotherapy site from source.
+  Datatype: varchar(50)
+  Key: —
+
+COLUMN NAME: intent (Use this when querying information)
+  Description: Intent of procedure (curative or palliative).
+  Datatype: varchar(50)
+  Key: —
+
+COLUMN NAME: delivered_fraction (Use this when querying information)
+  Description: Radiotherapy delivered fraction.
+  Datatype: float
+  Key: —
+
+COLUMN NAME: delivered_dose (Use this when querying information)
+  Description: Radiotherapy delivered dose.
+  Datatype: float
+  Key: —
+
+JOINS: Join to person via procedure_occurrence.person_id = person.person_id. Shares person_id with condition_occurrence, death, drug_exposure_cancerdrugs, measurement_mutation.

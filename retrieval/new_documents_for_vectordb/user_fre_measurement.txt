@@ -1,0 +1,39 @@
+TABLE: user_fre_measurement (216 rows)
+
+COLUMN NAME: person_id (Use this when querying information)
+  Data Element: Patient ID
+  Description: Unique deidentified number used to identify a patient
+  Datatype: varchar(255)
+  Key: FK to person
+
+COLUMN NAME: report_date (Use this when querying information)
+  Data Element: Report Date
+  Description: Date of the measurement report
+  Datatype: date
+  Key: —
+
+COLUMN NAME: report_name (Use this when querying information)
+  Data Element: Report Name
+  Description: Type of measurement report (eg.HistopathologyReport)
+  Datatype: varchar(255)
+  Key: —
+
+COLUMN NAME: sub_cat (Use this when querying information)
+  Data Element: Sub Category
+  Description: Sub-category of the measurement (eg.Histologypathology)
+  Datatype: varchar(255)
+  Key: —
+
+COLUMN NAME: Gene (Use this when querying information)
+  Data Element: Gene
+  Description: Gene name for molecular measurements (eg. APC, KRAS, NRAS, BRAF)
+  Datatype: varchar(100)
+  Key: —
+
+COLUMN NAME: MutationConclusion (Use this when querying information)
+  Data Element: Mutation Conclusion
+  Description: Result of the genetic/molecular test (eg.no muatation, mutation detected)
+  Datatype: varchar(500)
+  Key: —
+
+JOINS: Join to person via user_fre_measurement.person_id = person.person_id (where person_id is present). Link visits via visit_occurrence_id / visit_detail_id as described in columns.
