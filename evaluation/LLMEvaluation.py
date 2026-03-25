@@ -176,18 +176,22 @@ def evaluate_llm_performance(models, eval_dataset, qe):
 
     evaluation_df = pd.DataFrame(results)
     evaluation_df["Log Transformed Tokens"] = evaluation_df["Total Tokens"].apply(lambda x: round(math.log(x + 1), 3)) # Log transform for better scaling
-    columns_to_normalize = ["Latency (s)", "Complexity Score", "Log Transformed Tokens", "F1 Score"]
+    columns_to_normalize = ["Latency (s)", "Complexity Score", "Log Transformed Tokens", "F1 Score", "Semantic Score"]
     for column in columns_to_normalize:
         evaluation_df[f"Normalized {column}"] = normalize_score(column, evaluation_df)
     evaluation_df["Efficiency Score"] = 0.6 * evaluation_df["Normalized F1 Score"] + 0.1 * evaluation_df["Normalized Latency (s)"] + 0.1 * evaluation_df["Normalized Log Transformed Tokens"] + 0.2 * evaluation_df["Normalized Complexity Score"]
     return evaluation_df
 
 def normalize_score(column, df):
-    min_score = df[column].min()
-    max_score = df[column].max()
+    min_max_columns = ["F1 Score", "Semantic Score"] # Higher value is better
+    filtered_df = df[df["Generated SQL"] != "ERROR"] # Only consider successful generations for normalization
+    if filtered_df.empty:
+        return df[column].apply(lambda x: 0.5) # If no successful generations, assign 0.5 to all
+    min_score = filtered_df[column].min()
+    max_score = filtered_df[column].max()
     if max_score - min_score == 0:
         return df[column].apply(lambda x: 0.5) # If all scores are the same, assign 0.5
-    elif column == "F1 Score":
+    elif column in min_max_columns:
         return df[column].apply(lambda x: (x - min_score) / (max_score - min_score))
     else: # reverse normalization applied (lower is better)
         return df[column].apply(lambda x: (max_score - x) / (max_score - min_score))
