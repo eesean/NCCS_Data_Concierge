@@ -8,29 +8,9 @@ API_URL = "http://127.0.0.1:8000"
 
 st.set_page_config(page_title="NCCS Data Concierge", layout="wide")
 
-# CSS: Sample questions fixed above chat input, expands upward (injected early)
 st.markdown(
     """
     <style>
-    /* Fix Sample questions at bottom, match chat input full width */
-    [data-testid="stExpander"] {
-        position: fixed !important;
-        bottom: calc(70px + 10mm) !important;
-        left: 21rem !important;
-        right: 7rem !important;
-        width: auto !important;
-        z-index: 999 !important;
-    }
-    @media (max-width: 768px) {
-        [data-testid="stExpander"] { left: 1rem !important; right: 7rem !important; }
-    }
-    /* Expand upward: header bar at bottom, content grows above */
-    [data-testid="stExpander"] details {
-        display: flex !important;
-        flex-direction: column-reverse !important;
-    }
-    [data-testid="stExpander"] summary { flex-shrink: 0 !important; }
-    /* Sample question buttons: force light bg + dark text (overrides dark theme) */
     button.sample-q-copy, .sample-q-copy {
         color: #1f2937 !important;
         background: #e8eaed !important;
@@ -47,14 +27,14 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 if "processing" not in st.session_state:
     st.session_state.processing = False
+
 SAMPLE_TEMPLATES = [
     "What is the total number of {entity} diagnosed with {disease}{optional_filters}?",
     "What is the total number of {entity} diagnosed with {disease}, grouped by {dimension}{optional_filters}?",
     "What is the {aggregation_function} of {measure} for patients diagnosed with {disease}{optional_filters}?",
 ]
 
-## sidebar (AI model selection)
-# Only models with tool-calling support work. See: https://openrouter.ai/collections/tool-calling-models
+## sidebar
 MODEL_OPTIONS = [
     "arcee-ai/trinity-large-preview:free",
     "stepfun/step-3.5-flash:free",
@@ -77,22 +57,13 @@ MODEL_DESCRIPTIONS = {
         "Good for relatively straightforward queries like counts or filters as it is an efficient model that has good latency."
     ),
 }
-# Build display labels (what users see)
-MODEL_LABELS = {
-    m: f"{m} — {MODEL_DESCRIPTIONS.get(m, '')}"
-    for m in MODEL_OPTIONS
-}
 
 with st.sidebar:
     st.header("Settings")
-    # model selection
     selected_model = st.selectbox("AI model", MODEL_OPTIONS, index=0)
-
     st.caption(
         "Only models with tool-calling support work. Add more from openrouter.ai/collections/tool-calling-models"
     )
-
-    # model guide with descriptions visible 
     st.markdown("### Model guide")
     for m in MODEL_OPTIONS:
         desc = MODEL_DESCRIPTIONS.get(m, "")
@@ -100,9 +71,7 @@ with st.sidebar:
             f"""
             <div style="margin: 6px 0 10px 0;">
               <div style="font-weight: 600;">{m}</div>
-              <div style="color: #999; font-size: 0.85em; line-height: 1.25;">
-                {desc}
-              </div>
+              <div style="color: #999; font-size: 0.85em; line-height: 1.25;">{desc}</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -116,6 +85,7 @@ _TOOL_LABELS = {
     "validate_sql_query": "Validating SQL",
     "get_data": "Executing query",
 }
+
 
 def _render_steps(steps: list):
     if not steps:
@@ -141,27 +111,20 @@ def render_assistant_payload(resp: dict):
     _render_steps(resp.get("steps", []))
     print("DEBUG RESPONSE:", resp)
     if resp.get("status") != "ok":
-        st.info(
-            "💡 **Try again:** Use a different model or simplify your question."
-        )
+        st.info("💡 **Try again:** Use a different model or simplify your question.")
         return
 
     st.write(resp.get("message", ""))
 
-    # if scalar response (for COUNT)
     if "metric" in resp and "value" in resp:
         metric = str(resp["metric"])
         value = resp["value"]
-
-        # if it is just long text 
         if isinstance(value, str) and len(value) > 60:
             st.write(value)
         else:
             st.metric(metric, value)
+        return
 
-        return  
-
-    # if table response
     if resp.get("columns") and resp.get("rows") is not None:
         df = pd.DataFrame(resp["rows"], columns=resp["columns"])
         st.dataframe(df, use_container_width=True, hide_index=True)
@@ -174,20 +137,25 @@ for m in st.session_state.messages:
         else:
             st.write(m["content"])
 
-# Sample questions - click copies to clipboard (user can paste into chat input)
-# Rendered in iframe to avoid Streamlit dark-theme overriding button colors
+# sample questions — expander sits naturally above chat input, always aligned
 with st.expander("Sample questions", expanded=False):
     buttons_html = ""
     for t in SAMPLE_TEMPLATES:
         data_attr = html.escape(t).replace('"', "&quot;")
         display_label = html.escape(t).replace("{", "&#123;").replace("}", "&#125;")
-        buttons_html += f'''<button type="button" data-text="{data_attr}"
- onclick="navigator.clipboard.writeText(this.getAttribute('data-text'));const L=this.textContent;this.textContent='Copied!';setTimeout(()=>this.textContent=L,1500)"
- style="margin:4px 8px 4px 0;padding:6px 12px;border-radius:4px;border:1px solid #888;background:#c4c8cc;color:#111;cursor:pointer;font-size:0.9em;font-family:inherit;">{display_label}</button>'''
-    iframe_html = f"""<!DOCTYPE html><html><head><meta charset="utf-8"></head>
-    <body style="margin:0;padding:8px;background:transparent;color:#111;">
-    {buttons_html}
-    </body></html>"""
+        buttons_html += (
+            f'<button type="button" data-text="{data_attr}"'
+            f' onclick="navigator.clipboard.writeText(this.getAttribute(\'data-text\'));'
+            f'const L=this.textContent;this.textContent=\'Copied!\';setTimeout(()=>this.textContent=L,1500)"'
+            f' style="margin:4px 8px 4px 0;padding:6px 12px;border-radius:4px;border:1px solid #888;'
+            f'background:#c4c8cc;color:#111;cursor:pointer;font-size:0.9em;font-family:inherit;">'
+            f"{display_label}</button>"
+        )
+    iframe_html = (
+        f'<!DOCTYPE html><html><head><meta charset="utf-8"></head>'
+        f'<body style="margin:0;padding:8px;background:transparent;color:#111;">'
+        f"{buttons_html}</body></html>"
+    )
     st.components.v1.html(iframe_html, height=85, scrolling=False)
 
 # user input (/ask/stream)
@@ -244,7 +212,12 @@ if prompt and not st.session_state.processing:
                     break
 
         except Exception as e:
-            final_data = {"status": "error", "message": "Backend not reachable.", "reasons": [str(e)], "steps": accumulated_steps}
+            final_data = {
+                "status": "error",
+                "message": "Backend not reachable.",
+                "reasons": [str(e)],
+                "steps": accumulated_steps,
+            }
             with placeholder.container():
                 render_assistant_payload(final_data)
 
