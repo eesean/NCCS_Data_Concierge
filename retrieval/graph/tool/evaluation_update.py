@@ -9,7 +9,7 @@ from evaluation.SQLEvaluator import SQLComplexityEvaluator
 print("Importing SematicScoring" )
 from SematicScoring import calculate_similarity
 
-PENALTY_SCORE = 0.2
+PENALTY_SCORE = 0.2 # value can be adjusted
 
 def evaluate_live_query(prompt: str, model: str, generated_sql: str, latency: float, metrics: dict):
     """
@@ -73,8 +73,11 @@ def evaluate_live_query(prompt: str, model: str, generated_sql: str, latency: fl
     return row_data
 
 def normalize_score(column, df):
-    min_score = df[column].min()
-    max_score = df[column].max()
+    filtered_df = df[df["Generated SQL"] != "ERROR"] # Only consider successful generations for normalization
+    if filtered_df.empty:
+        return df[column].apply(lambda x: 0.5) # If no successful generations, assign 0.5 to all
+    min_score = filtered_df[column].min()
+    max_score = filtered_df[column].max()
     if max_score - min_score == 0:
         return df[column].apply(lambda x: 0.5) # If all scores are the same, assign 0.5
     elif column == "Semantic Score":
