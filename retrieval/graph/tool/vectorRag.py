@@ -7,6 +7,9 @@ from langchain_huggingface import HuggingFaceEmbeddings
 # chroma_db was created in retrieval/, so from tool/ we need two levels up
 CHROMA_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "chroma_db")
 
+# uncomment this if you want to use the new chroma_db
+# CHROMA_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "new_chroma_db")
+
 # Use the same embedding model used when creating the DB
 embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2")
 
