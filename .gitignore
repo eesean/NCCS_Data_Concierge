@@ -51,7 +51,6 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 cover/
-documents_for_vectordb/
 
 # Translations
 *.mo
@@ -215,3 +214,7 @@ __marimo__/
 *.xlsx
 csv_files/
 retrieval/anchor_NUS_capstone_V2.ipynb
+
+# Chroma vector stores (local embeddings; regenerate from notebooks)
+retrieval/chroma_db/
+retrieval/new_chroma_db/
