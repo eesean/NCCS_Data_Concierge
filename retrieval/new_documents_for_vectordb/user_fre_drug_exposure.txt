@@ -1,0 +1,135 @@
+TABLE: user_fre_drug_exposure (1865 rows)
+
+COLUMN NAME: drug_exposure_id (Use this when querying information)
+  Data Element: Table ID
+  Description: Event id in user_fre_drug_exposure
+  Datatype: integer
+  Key: —
+
+COLUMN NAME: person_id (Use this when querying information)
+  Data Element: Patient ID
+  Description: Unique deidentified number used to identify a patient
+  Datatype: integer
+  Key: FK to person
+
+COLUMN NAME: drug_code (Use this when querying information)
+  Data Element: Drug Code
+  Description: Code for individual drugs prescribed
+  Datatype: varchar(50)
+  Key: —
+
+COLUMN NAME: drug_description (Use this when querying information)
+  Data Element: Drug Description
+  Description: Description of the drug prescribed
+  Datatype: varchar(255)
+  Key: —
+
+COLUMN NAME: drug_exposure_start_date (Use this when querying information)
+  Data Element: Start Date of Drug Prescribed
+  Description: Start date of each drug prescribed.
+  Datatype: date
+  Key: —
+
+COLUMN NAME: drug_exposure_end_date (Use this when querying information)
+  Data Element: End Date of Drug Prescribed
+  Description: End date of each drug prescribed.
+  Datatype: date
+  Key: —
+
+COLUMN NAME: drug_type_concept_id (Use this when querying information)
+  Data Element: EHR
+  Description: Concept id for EHR
+  Datatype: integer
+  Key: —
+
+COLUMN NAME: quantity (Use this when querying information)
+  Data Element: Quantity
+  Description: Quantity of each drug dispensed. (ie number of bottle/tablets etc)
+  Datatype: float
+  Key: —
+
+COLUMN NAME: days_supply (Use this when querying information)
+  Data Element: Number of days
+  Description: Number of days each drug is prescribed.
+  Datatype: integer
+  Key: —
+
+COLUMN NAME: duration_unit (Use this when querying information)
+  Data Element: Duration Unit
+  Description: Unit of measurement for drug duration
+  Datatype: varchar(50)
+  Key: —
+
+COLUMN NAME: sig (Use this when querying information)
+  Data Element: Prescription Instructions
+  Description: Verbatim instructions for each drug prescribed.
+  Datatype: varchar
+  Key: —
+
+COLUMN NAME: route_concept_id (Use this when querying information)
+  Data Element: Route Concept ID
+  Description: concept id of the route of prescribed drug
+  Datatype: integer
+  Key: —
+
+COLUMN NAME: route_source_value (Use this when querying information)
+  Data Element: Route Source Value
+  Description: Source value of route
+  Datatype: varchar(50)
+  Key: —
+
+COLUMN NAME: dose_unit_source_value (Use this when querying information)
+  Data Element: Drug Dose
+  Description: source value of dose unit
+  Datatype: varchar(50)
+  Key: —
+
+COLUMN NAME: visit_occurrence_id (Use this when querying information)
+  Data Element: Table ID
+  Description: Corresponding visit the drug was prescribed. Linkage to visit_occurrence table.
+  Datatype: integer
+  Key: —
+
+COLUMN NAME: visit_detail_id (Use this when querying information)
+  Data Element: Table ID
+  Description: Corresponding visit the drug was prescribed. Linkage to visit_detail table.
+  Datatype: integer
+  Key: —
+
+COLUMN NAME: visit_number (Use this when querying information)
+  Data Element: Visit Number
+  Description: Corresponding visit number the drug was prescribed. Only for outpatient visits.
+  Datatype: varchar(50)
+  Key: —
+
+COLUMN NAME: case_number (Use this when querying information)
+  Data Element: Case Number
+  Description: Corresponding case number the drug as prescribed. For both inpatient and outpatient visits.
+  Datatype: varchar(50)
+  Key: —
+
+COLUMN NAME: institution (Use this when querying information)
+  Data Element: Institution
+  Description: Institution where the drug was prescribed
+  Datatype: varchar(255)
+  Key: —
+
+COLUMN NAME: case_type (Use this when querying information)
+  Data Element: Case Type
+  Description: Type of case (Inpatient/Outpatient)
+  Datatype: varchar(50)
+  Key: —
+
+COLUMN NAME: drug_strength (Use this when querying information)
+  Data Element: Drug Strength
+  Description: Strength of the prescribed drug
+  Datatype: varchar(50)
+  Key: —
+
+COLUMN NAME: drug_form (Use this when querying information)
+  Data Element: Drug Form
+  Description: Form of the prescribed drug
+  Datatype: varchar(50)
+  Key: —
+
+JOINS: Join to person via user_fre_drug_exposure.person_id = person.person_id (where person_id is present). Link visits via visit_occurrence_id / visit_detail_id as described in columns.

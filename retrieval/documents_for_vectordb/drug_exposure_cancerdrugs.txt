@@ -1,0 +1,118 @@
+TABLE: drug_exposure_cancerdrugs (1865 rows)
+
+COLUMN NAME: drug_exposure_id (Use this when querying information)
+  Description: Unique identifier for each drug dispensing or administration record.
+  Datatype: integer
+  Key: PK
+
+COLUMN NAME: person_id (Use this when querying information)
+  Description: Deidentified patient identifier. Links to person.
+  Datatype: integer
+  Key: FK to person
+
+COLUMN NAME: drug_concept_id (Use this when querying information)
+  Description: OMOP concept ID for drug (mapped from item codes).
+  Datatype: integer
+  Key: —
+
+COLUMN NAME: drug_source_value (Use this when querying information)
+  Description: Verbatim drug name/code from source.
+  Datatype: varchar(50)
+  Key: —
+
+COLUMN NAME: drug_exposure_start_date (Use this when querying information)
+  Description: Start date of drug prescription or administration.
+  Datatype: date
+  Key: —
+
+COLUMN NAME: drug_exposure_end_date (Use this when querying information)
+  Description: End date of drug exposure.
+  Datatype: date
+  Key: —
+
+COLUMN NAME: drug_type_concept_id (Use this when querying information)
+  Description: Concept ID for provenance (EHR, prescription, etc.).
+  Datatype: integer
+  Key: —
+
+COLUMN NAME: quantity (Use this when querying information)
+  Description: Quantity dispensed (tablets, bottles, etc.).
+  Datatype: float
+  Key: —
+
+COLUMN NAME: days_supply (Use this when querying information)
+  Description: Number of days the drug is prescribed.
+  Datatype: integer
+  Key: —
+
+COLUMN NAME: duration_unit (Use this when querying information)
+  Description: Unit for drug duration (e.g. Week, Day).
+  Datatype: varchar(50)
+  Key: —
+
+COLUMN NAME: sig (Use this when querying information)
+  Description: Verbatim prescription instructions from provider.
+  Datatype: varchar(MAX)
+  Key: —
+
+COLUMN NAME: route_concept_id (Use this when querying information)
+  Description: OMOP concept ID for route of administration.
+  Datatype: integer
+  Key: —
+
+COLUMN NAME: route_source_value (Use this when querying information)
+  Description: Verbatim route from source.
+  Datatype: varchar(50)
+  Key: —
+
+COLUMN NAME: dose_unit_source_value (Use this when querying information)
+  Description: Verbatim dose unit from source.
+  Datatype: varchar(50)
+  Key: —
+
+COLUMN NAME: visit_occurrence_id (Use this when querying information)
+  Description: Visit during which drug was prescribed. Links to visit_occurrence.
+  Datatype: integer
+  Key: FK to visit_occurrence
+
+COLUMN NAME: visit_detail_id (Use this when querying information)
+  Description: Visit detail during which drug was given. Links to visit_detail.
+  Datatype: integer
+  Key: FK to visit_detail
+
+COLUMN NAME: visit_number (Use this when querying information)
+  Description: Visit number (outpatient only).
+  Datatype: varchar(50)
+  Key: —
+
+COLUMN NAME: case_number (Use this when querying information)
+  Description: Case number for inpatient and outpatient.
+  Datatype: varchar(50)
+  Key: —
+
+COLUMN NAME: institution (Use this when querying information)
+  Description: Institution where drug was prescribed (e.g. NCC).
+  Datatype: varchar(50)
+  Key: —
+
+COLUMN NAME: case_type (Use this when querying information)
+  Description: Type of case (Outpatient, Inpatient).
+  Datatype: varchar(50)
+  Key: —
+
+COLUMN NAME: drug_strength (Use this when querying information)
+  Description: Drug strength (e.g. 500MG).
+  Datatype: varchar(50)
+  Key: —
+
+COLUMN NAME: drug_form (Use this when querying information)
+  Description: Drug form (e.g. TAB, CAP).
+  Datatype: varchar(50)
+  Key: —
+
+COLUMN NAME: ATC (Use this when querying information)
+  Description: Anatomical Therapeutic Chemical classification code.
+  Datatype: varchar(50)
+  Key: —
+
+JOINS: Join to person via drug_exposure_cancerdrugs.person_id = person.person_id. Shares person_id with condition_occurrence, death, measurement_mutation, procedure_occurrence.

@@ -1,0 +1,43 @@
+TABLE: condition_occurrence (100 rows)
+
+COLUMN NAME: condition_occurrence_id (Use this when querying information)
+  Description: Unique identifier for each condition/diagnosis record.
+  Datatype: integer
+  Key: PK
+
+COLUMN NAME: person_id (Use this when querying information)
+  Description: Deidentified patient identifier. Links to person.
+  Datatype: integer
+  Key: FK to person
+
+COLUMN NAME: condition_start_date (Use this when querying information)
+  Description: Start date of condition or diagnosis date.
+  Datatype: date
+  Key: —
+
+COLUMN NAME: condition_concept_id (Use this when querying information)
+  Description: OMOP condition_concept_id for condition/diagnosis. For cancer, mapped via ICDO3 histo-topo codes. Concept table not available; use ICD10/ICDO3 for filtering.
+  Datatype: integer
+  Key: —
+
+COLUMN NAME: condition_type_concept_id (Use this when querying information)
+  Description: condition_type_concept_id for provenance (EHR, claim, registry).
+  Datatype: integer
+  Key: —
+
+COLUMN NAME: condition_source_value (Use this when querying information)
+  Description: Verbatim diagnosis from source (ICD9/10, histo/topo codes).
+  Datatype: varchar(50)
+  Key: —
+
+COLUMN NAME: ICD10 (Use this when querying information)
+  Description: All diagnosis codes converted to ICD-10.
+  Datatype: varchar(50)
+  Key: —
+
+COLUMN NAME: ICDO3 (Use this when querying information)
+  Description: Likely ICD-O-3 tumor site/topography code
+  Datatype: varchar(50)
+  Key: —
+
+JOINS: Join to person via condition_occurrence.person_id = person.person_id. Shares person_id with death, drug_exposure_cancerdrugs, measurement_mutation, procedure_occurrence.

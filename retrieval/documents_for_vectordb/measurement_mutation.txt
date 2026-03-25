@@ -1,0 +1,113 @@
+TABLE: measurement_mutation (856 rows)
+
+COLUMN NAME: measurement_id (Use this when querying information)
+  Description: Unique identifier for each measurement record.
+  Datatype: integer
+  Key: PK
+
+COLUMN NAME: person_id (Use this when querying information)
+  Description: Deidentified patient identifier. Links to person.
+  Datatype: integer
+  Key: FK to person
+
+COLUMN NAME: measurement_concept_id (Use this when querying information)
+  Description: OMOP measurement_concept_id for measurement type (c_stage, p_stage, tumor markers).
+  Datatype: integer
+  Key: —
+
+COLUMN NAME: measurement_concept_name (Use this when querying information)
+  Description: OMOP measurement_concept_name for measurement type.
+  Datatype: varchar(50)
+  Key: —
+
+COLUMN NAME: measurement_date (Use this when querying information)
+  Description: Date of measurement (diagnosis date for cancer characteristics, report date for markers).
+  Datatype: date
+  Key: —
+
+COLUMN NAME: measurement_time (Use this when querying information)
+  Description: Time of measurement.
+  Datatype: varchar(10)
+  Key: —
+
+COLUMN NAME: reported_date (Use this when querying information)
+  Description: Date measurement was reported.
+  Datatype: date
+  Key: —
+
+COLUMN NAME: reported_time (Use this when querying information)
+  Description: Time measurement was reported.
+  Datatype: varchar(10)
+  Key: —
+
+COLUMN NAME: measurement_type_concept_id (Use this when querying information)
+  Description: measurement_type_concept_id for provenance (EHR, claim, etc.).
+  Datatype: integer
+  Key: —
+
+COLUMN NAME: value_as_concept_id (Use this when querying information)
+  Description: OMOP value_as_concept_id for categorical measurement result.
+  Datatype: integer
+  Key: —
+
+COLUMN NAME: value_as_concept_name (Use this when querying information)
+  Description: OMOP value_as_concept_name for measurement result.
+  Datatype: varchar(50)
+  Key: —
+
+COLUMN NAME: unit_concept_id (Use this when querying information)
+  Description: OMOP unit_concept_id for measurement unit.
+  Datatype: integer
+  Key: —
+
+COLUMN NAME: unit_concept_name (Use this when querying information)
+  Description: Unit of measurement.
+  Datatype: varchar(50)
+  Key: —
+
+COLUMN NAME: reference_ranges (Use this when querying information)
+  Description: Reference range for lab markers.
+  Datatype: varchar(50)
+  Key: —
+
+COLUMN NAME: value_source_value (Use this when querying information)
+  Description: Verbatim measurement result from source.
+  Datatype: varchar(50)
+  Key: —
+
+COLUMN NAME: measurement_event_id (Use this when querying information)
+  Description: Links to condition_occurrence_id or other event tables.
+  Datatype: integer
+  Key: FK to condition_occurrence (when meas_event_field_concept_name is condition_occurrence)
+
+COLUMN NAME: meas_event_field_concept_id (Use this when querying information)
+  Description: Concept ID identifying which table/column the event_id references.
+  Datatype: integer
+  Key: —
+
+COLUMN NAME: meas_event_field_concept_name (Use this when querying information)
+  Description: Table name the measurement_event_id links to.
+  Datatype: varchar(50)
+  Key: —
+
+COLUMN NAME: visit_number (Use this when querying information)
+  Description: Visit number (outpatient only).
+  Datatype: varchar(50)
+  Key: —
+
+COLUMN NAME: case_number (Use this when querying information)
+  Description: Case number for inpatient and outpatient.
+  Datatype: varchar(50)
+  Key: —
+
+COLUMN NAME: cisit_occurrence_id (Use this when querying information)
+  Description: Visit during which measurement was taken. Links to visit_occurrence (note: typo in column name).
+  Datatype: integer
+  Key: FK to visit_occurrence
+
+COLUMN NAME: visit_detail_id (Use this when querying information)
+  Description: Visit detail during which measurement was taken. Links to visit_detail.
+  Datatype: integer
+  Key: FK to visit_detail
+
+JOINS: Join to person via measurement_mutation.person_id = person.person_id. Join to condition_occurrence via measurement_event_id = condition_occurrence.condition_occurrence_id when meas_event_field_concept_name is condition_occurrence.

@@ -1,0 +1,45 @@
+TABLE: person (100 rows)
+
+COLUMN NAME: person_id (Use this when querying information)
+  Data Element: Patient ID
+  Description: Unique deidentified number used to identify a patient
+  Datatype: integer
+  Key: PK
+
+COLUMN NAME: gender_concept_id (Use this when querying information)
+  Data Element: Gender
+  Description: Concept ID of patient's gender
+  Datatype: integer
+  Key: —
+
+COLUMN NAME: gender_source_value (Use this when querying information)
+  Data Element: Gender
+  Description: Source value of patient's gender
+  Datatype: varchar(50)
+  Key: —
+
+COLUMN NAME: year_of_birth (Use this when querying information)
+  Data Element: Year of Birth
+  Description: Year of birth of patient
+  Datatype: integer
+  Key: —
+
+COLUMN NAME: month_of_birth (Use this when querying information)
+  Data Element: Month of Birth
+  Description: Month of birth of patient
+  Datatype: integer
+  Key: —
+
+COLUMN NAME: race_concept_id (Use this when querying information)
+  Data Element: Race
+  Description: Concept ID of patient's race
+  Datatype: integer
+  Key: —
+
+COLUMN NAME: race_source_value (Use this when querying information)
+  Data Element: Race
+  Description: Source value of patient's race
+  Datatype: varchar(50)
+  Key: —
+
+JOINS: Person is the central table. Other tables link via person_id: observation_period, visit_occurrence, visit_detail, user_fre_condition_occurrence, procedure_occurrence, user_fre_measurement, user_fre_drug_exposure, death.

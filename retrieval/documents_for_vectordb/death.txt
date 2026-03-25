@@ -1,0 +1,18 @@
+TABLE: death (51 rows)
+
+COLUMN NAME: person_id (Use this when querying information)
+  Description: Deidentified patient identifier. Links to person.
+  Datatype: integer
+  Key: FK to person
+
+COLUMN NAME: death_date (Use this when querying information)
+  Description: Date of death.
+  Datatype: date
+  Key: —
+
+COLUMN NAME: cause_source_value (Use this when querying information)
+  Description: Source code for cause of death.
+  Datatype: varchar(50)
+  Key: —
+
+JOINS: Join to person via death.person_id = person.person_id. Link with condition_occurrence, drug_exposure_cancerdrugs, measurement_mutation, procedure_occurrence for patient-level analysis.

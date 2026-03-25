@@ -1,0 +1,27 @@
+TABLE: death (51 rows)
+
+COLUMN NAME: person_id (Use this when querying information)
+  Data Element: Patient ID
+  Description: Unique deidentified number used to identify a patient
+  Datatype: integer
+  Key: FK to person
+
+COLUMN NAME: death_date (Use this when querying information)
+  Data Element: Death Date
+  Description: Deceased date of patient.
+  Datatype: date
+  Key: —
+
+COLUMN NAME: death_type_concept_id (Use this when querying information)
+  Data Element: EHR
+  Description: concept id for EHR
+  Datatype: integer
+  Key: —
+
+COLUMN NAME: cause_source_value (Use this when querying information)
+  Data Element: Cause of Death
+  Description: Source value of death cause
+  Datatype: varchar(50)
+  Key: —
+
+JOINS: Join to person via death.person_id = person.person_id (where person_id is present). Link visits via visit_occurrence_id / visit_detail_id as described in columns.

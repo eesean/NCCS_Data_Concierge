@@ -1,0 +1,105 @@
+TABLE: user_fre_condition_occurrence (100 rows)
+
+COLUMN NAME: condition_occurrence_id (Use this when querying information)
+  Data Element: Table ID
+  Description: Event id in user_fre_condition_occurrence table
+  Datatype: varchar(50)
+  Key: —
+
+COLUMN NAME: person_id (Use this when querying information)
+  Data Element: Patient ID
+  Description: Unique deidentified number used to identify a patient
+  Datatype: varchar(255)
+  Key: FK to person
+
+COLUMN NAME: Diag Date (Use this when querying information)
+  Data Element: Diagnosis Date
+  Description: Start date of each condition or diagnosis. Also the date of diagnosis.
+  Datatype: date
+  Key: —
+
+COLUMN NAME: Diag Code (Use this when querying information)
+  Data Element: Topo (ICD10-AM)
+  Description: Concept id for conditions or diagnosis. For cancer diagnosis, concept ids will be mapped using icdo3 histo-topo codes
+  Datatype: varchar(50)
+  Key: —
+
+COLUMN NAME: Diagnosis (Use this when querying information)
+  Data Element: Diagnosis Description
+  Description: Cancer descriptions
+  Datatype: varchar(255)
+  Key: —
+
+COLUMN NAME: Histology (Use this when querying information)
+  Data Element: Histology morphology code
+  Description: Histology morphology code for cancer diagnosis
+  Datatype: integer
+  Key: —
+
+COLUMN NAME: Histo Desc (Use this when querying information)
+  Data Element: Histology Description
+  Description: Histology description for cancer diagnosis
+  Datatype: varchar(255)
+  Key: —
+
+COLUMN NAME: Laterality (Use this when querying information)
+  Data Element: Laterality
+  Description: Laterality information for paired organs
+  Datatype: varchar(50)
+  Key: —
+
+COLUMN NAME: Hist Grade (Use this when querying information)
+  Data Element: Histological Grade
+  Description: Histological grade of the cancer
+  Datatype: integer
+  Key: —
+
+COLUMN NAME: TNM Clin T (Use this when querying information)
+  Data Element: Clinical T Stage
+  Description: Clinical T stage from TNM staging system
+  Datatype: varchar(50)
+  Key: —
+
+COLUMN NAME: TNM Clin N (Use this when querying information)
+  Data Element: Clinical N Stage
+  Description: Clinical N stage from TNM staging system
+  Datatype: varchar(50)
+  Key: —
+
+COLUMN NAME: TNM Clin M (Use this when querying information)
+  Data Element: Clinical M Stage
+  Description: Clinical M stage from TNM staging system
+  Datatype: varchar(50)
+  Key: —
+
+COLUMN NAME: TNM Clin Stage Group (Use this when querying information)
+  Data Element: Clinical Stage Group
+  Description: Clinical overall stage group from TNM staging system
+  Datatype: varchar(50)
+  Key: —
+
+COLUMN NAME: TNM Path T (Use this when querying information)
+  Data Element: Pathological T Stage
+  Description: Pathological T stage from TNM staging system
+  Datatype: varchar(50)
+  Key: —
+
+COLUMN NAME: TNM Path N (Use this when querying information)
+  Data Element: Pathological N Stage
+  Description: Pathological N stage from TNM staging system
+  Datatype: varchar(50)
+  Key: —
+
+COLUMN NAME: TNM Path M (Use this when querying information)
+  Data Element: Pathological M Stage
+  Description: Pathological M stage from TNM staging system
+  Datatype: varchar(50)
+  Key: —
+
+COLUMN NAME: TNM Path Stage Group (Use this when querying information)
+  Data Element: Pathological Stage Group
+  Description: Pathological overall stage group from TNM staging system
+  Datatype: varchar(50)
+  Key: —
+
+JOINS: Join to person via user_fre_condition_occurrence.person_id = person.person_id (where person_id is present). Link visits via visit_occurrence_id / visit_detail_id as described in columns.
