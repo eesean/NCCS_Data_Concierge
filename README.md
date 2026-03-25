@@ -50,3 +50,12 @@ streamlit run NCCS_Query_Assistant.py
 The frontend will open in your browser (typically `http://localhost:8501`).
 
 **Note:** Start the backend first, since the frontend connects to it.
+
+## Running Internal Model Evaluation
+
+```bash
+cd evaluation
+python LLMEvaluation.py
+```
+
+**Note:** Test cases and models used can be found in the Python file.
