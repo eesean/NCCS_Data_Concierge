@@ -11,3 +11,5 @@ sqlglot
 langchain_community
 langchain_huggingface
 sentence_transformers
+chromadb
+plotly
