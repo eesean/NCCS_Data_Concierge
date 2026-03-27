@@ -1,14 +1,19 @@
 import json
+import os
 import time
 from typing import Any, Dict, Generator, List, Optional, Tuple
 
-from langchain_core.messages import ToolMessage,SystemMessage,HumanMessage
+from langchain_core.messages import ToolMessage, SystemMessage, HumanMessage
 
 from retrieval.graph.node.workflow import build_graph
 from retrieval.graph.outputParser import parse_data_json, extract_final_text, extract_data_json
 from retrieval.graph.tool.vectorRag import get_schema_context, get_sql_template
 from retrieval.graph.tool.evaluation_update import evaluate_live_query
 from retrieval.llm import DEFAULT_MODEL
+
+# When set, all graph calls are routed through the local Ollama server at this URL.
+# Example: export OLLAMA_BASE_URL=http://localhost:11434
+_OLLAMA_BASE_URL: Optional[str] = os.getenv("OLLAMA_BASE_URL") or None
 
 
 def _build_response(messages: list) -> Dict[str, Any]:
@@ -93,9 +98,24 @@ def _get_schema_and_messages(question: str) -> list:
     
     return [system_msg, user_msg] # Need to return system and user message for Open AI to work. 
 
-def stream_question_agent(question: str, model: Optional[str] = None, history: Optional[List[Dict]] = None) -> Generator[str, None, None]:
+def stream_question_agent(
+    question: str,
+    model: Optional[str] = None,
+    history: Optional[List[Dict]] = None,
+    ollama_base_url: Optional[str] = None,
+) -> Generator[str, None, None]:
     """
     Generator that runs the ReAct agent and yields Server-Sent Events (SSE).
+
+    Args:
+        question:        Natural-language query from the user.
+        model:           Model identifier. For OpenRouter use provider/model slug;
+                         for Ollama use the local model tag (e.g. 'llama3.1').
+        history:         Prior conversation turns for multi-turn context.
+        ollama_base_url: When provided (or when OLLAMA_BASE_URL env var is set),
+                         routes inference through the local Ollama server and uses
+                         simulated tool calling instead of native function calling.
+                         Pass None to use the default OpenRouter path.
 
     Event types emitted:
       {"type": "step_call",   "tool": <name>}
@@ -138,7 +158,8 @@ def stream_question_agent(question: str, model: Optional[str] = None, history: O
                 + [schema_messages[-1]]
             )
 
-        graph = build_graph(model or DEFAULT_MODEL)
+        effective_ollama_url = ollama_base_url or _OLLAMA_BASE_URL
+        graph = build_graph(model or DEFAULT_MODEL, ollama_base_url=effective_ollama_url)
         initial_state = {"query": question, "final_answer": "", "messages": schema_messages}
     except Exception as e:
         yield sse({"type": "error", "status": "error", "message": "Agent setup failed.", "reasons": [str(e)]})

@@ -3,6 +3,7 @@ uvicorn
 streamlit 
 langchain 
 langchain-openai 
+langchain-ollama
 python-dotenv 
 requests 
 pandas 
