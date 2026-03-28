@@ -35,47 +35,32 @@ SAMPLE_TEMPLATES = [
 ]
 
 ## sidebar
-MODEL_OPTIONS = [
-    "arcee-ai/trinity-large-preview:free",
-    "stepfun/step-3.5-flash:free",
-    "z-ai/glm-4.5-air:free",
-    "nvidia/nemotron-3-nano-30b-a3b:free"
+import os as _os
 
-]
-
-MODEL_DESCRIPTIONS = {
-    "arcee-ai/trinity-large-preview:free": (
-        "Good for relatively complex queries as it has stronger reasoning performance and is more reliable at multi-step SQL planning."
-    ),
-    "stepfun/step-3.5-flash:free": (
-        "Good for schema-heavy queries where there might be more tables and columns as it is optimized for speed and long-context."
-    ),
-    "z-ai/glm-4.5-air:free": (
-        "Good for multi-step workflows as it is designed for agentic use and typically handles tool usage and structured steps more consistently."
-    ),
-    "nvidia/nemotron-3-nano-30b-a3b:free": (
-        "Good for relatively straightforward queries like counts or filters as it is an efficient model that has good latency."
-    ),
-}
+_DEFAULT_MODEL = _os.getenv("OLLAMA_DEFAULT_MODEL", "qwen2.5:7b")
 
 with st.sidebar:
     st.header("Settings")
-    selected_model = st.selectbox("AI model", MODEL_OPTIONS, index=0)
-    st.caption(
-        "Only models with tool-calling support work. Add more from openrouter.ai/collections/tool-calling-models"
+    selected_model = st.text_input(
+        "Ollama model tag",
+        value=_DEFAULT_MODEL,
+        help="Must match a model from `ollama list` on the server (e.g. qwen2.5:7b).",
     )
-    st.markdown("### Model guide")
-    for m in MODEL_OPTIONS:
-        desc = MODEL_DESCRIPTIONS.get(m, "")
-        st.markdown(
-            f"""
-            <div style="margin: 6px 0 10px 0;">
-              <div style="font-weight: 600;">{m}</div>
-              <div style="color: #999; font-size: 0.85em; line-height: 1.25;">{desc}</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+    st.caption(
+        "Inference runs locally via Ollama. "
+        "The model tag must match a model you have pulled with `ollama pull <tag>`."
+    )
+    st.markdown("### Recommended models")
+    st.markdown(
+        """
+        | Tag | Notes |
+        |-----|-------|
+        | `qwen2.5:7b` | Strong instruction following, good JSON output |
+        | `qwen2.5-coder:7b` | Optimised for code and structured data |
+        | `llama3.1` | General purpose, well-rounded |
+        | `mistral` | Fast, good for straightforward queries |
+        """
+    )
 
 st.title("NCCS Data Concierge")
 
@@ -109,9 +94,14 @@ def _render_steps(steps: list):
 
 def render_assistant_payload(resp: dict):
     _render_steps(resp.get("steps", []))
-    print("DEBUG RESPONSE:", resp)
     if resp.get("status") != "ok":
-        st.info("💡 **Try again:** Use a different model or simplify your question.")
+        err_msg = resp.get("message") or "Something went wrong."
+        st.error(err_msg)
+        reasons = resp.get("reasons") or []
+        if reasons:
+            for r in reasons:
+                st.code(str(r), language="text")
+        st.caption("Try a different model, check that Ollama is running, or simplify your question.")
         return
 
     st.write(resp.get("message", ""))

@@ -1,72 +1,52 @@
 import os
 import json
 import re
-import duckdb
 from dotenv import load_dotenv
-from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 
 load_dotenv()
 
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-MODEL = "deepseek/deepseek-v3.2"
-## deepseek/deepseek-v3.2 
-## openai/gpt-4o-mini
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+OLLAMA_DEFAULT_MODEL = os.getenv("OLLAMA_DEFAULT_MODEL", "qwen2.5:7b")
 
 
+def _get_llm(model_name: str = None):
+    from langchain_ollama import ChatOllama
+    return ChatOllama(
+        model=model_name or OLLAMA_DEFAULT_MODEL,
+        base_url=OLLAMA_BASE_URL,
+    )
 
-_llm = ChatOpenAI(
-    model=MODEL,
-    base_url="https://openrouter.ai/api/v1",
-    api_key=OPENROUTER_API_KEY,
-    temperature=0,
-)
 
 class SQLGenError(RuntimeError):
     pass
 
+
 def generate_sql_from_nl(question: str, model: str = None) -> dict:
-    """
-    Generate SQL from natural language. Returns SQL string only.
-    Designed to be called by pipeline/backend later.
-    """
-    if not OPENROUTER_API_KEY:
-        raise SQLGenError("Missing OPENROUTER_API_KEY in .env")
+    """Generate SQL from a natural-language question using the local Ollama model."""
+    llm = _get_llm(model)
 
-    # Choose the model: Use the parameter if provided, else the default
-    target_model = model or MODEL
-    
-    # Bind the model to the existing LLM object
-    llm_with_model = _llm.bind(model=target_model)
-
-    # Force structured output so downstream validation/execution is reliable
-    system = f"""Return ONLY valid JSON in exactly this format:
-        {{"sql": "<single SELECT statement>",
-        "explanation": "<a brief, sentence explanation of what the query does>"
-        }}
+    system = """Return ONLY valid JSON in exactly this format:
+        {"sql": "<single SELECT statement>",
+        "explanation": "<a brief sentence explanation of what the query does>"
+        }
 
         Rules:
         - Generate exactly ONE SQL statement.
-        - Do NOT assume any other OMOP tables exist.
         - Only SELECT queries are allowed. Never use INSERT/UPDATE/DELETE/DROP/CREATE/ALTER.
-        - Use only the available OMOP-style tables and join keys.
-        - Include LIMIT when necessary. For COUNT-only queries, use LIMIT 1 when necessary.
         - Use DuckDB-compatible functions only.
-        - Do NOT reference any table not explicitly listed below.
-        - Analyze the user prompt carefully, make sure all of the parameters and requirements are taken note of
-        - You may ONLY use these tables (exact spelling, lowercase):
-        
+        - Include LIMIT when necessary.
+        - Analyze the user prompt carefully.
         """
 
-    resp = llm_with_model.invoke([
+    resp = llm.invoke([
         SystemMessage(content=system),
-        HumanMessage(content=question)
+        HumanMessage(content=question),
     ])
 
     content = _strip_code_fences((resp.content or "").strip())
     usage = resp.usage_metadata or {}
-    meta = resp.response_metadata or {}
-    cost_details = meta.get("token_usage", {}).get("cost_details", {})
+
     if not content:
         raise SQLGenError("LLM returned empty output")
 
@@ -79,60 +59,49 @@ def generate_sql_from_nl(question: str, model: str = None) -> dict:
             "usage": {
                 "input_tokens": usage.get("input_tokens"),
                 "output_tokens": usage.get("output_tokens"),
-                "total_tokens": usage.get("total_tokens")
+                "total_tokens": usage.get("total_tokens"),
             },
             "cost": {
-                "total_cost": cost_details.get("upstream_inference_cost"),
-                "prompt_cost": cost_details.get("upstream_inference_prompt_cost"),
-                "completion_cost": cost_details.get("upstream_inference_completions_cost")
-            }
+                "total_cost": 0.0,
+                "prompt_cost": 0.0,
+                "completion_cost": 0.0,
+            },
         }
-
     except Exception as e:
         raise SQLGenError(f"Failed to parse LLM response. Raw: {content}") from e
 
+
 def explain_sql(sql: str, model_name: str = None) -> str:
     """
-    Independently explains a SQL query without knowing the original prompt.
-    Used for adversarial validation.
+    Translate a DuckDB SQL query into a single plain-English interrogative sentence.
+    Used for semantic similarity scoring in live evaluation.
     """
-    target_model = model_name or MODEL
-    # Use a cheap, fast model for this audit step
-    llm_explainer = _llm.bind(model=target_model)
-    
+    llm = _get_llm(model_name)
+
     system_message = (
-        """Role: You are a specialized SQL-Medical Auditor.
-
-            Task: Your goal is to translate DuckDB SQL queries into a single, concise interrogative sentence directed at a physician.
-
-            Requirements:
-
-            Format: The output must be exactly one sentence.
-
-            Content: Explicitly state the population being retrieved, including all specific medical codes , date ranges, and logical filters.
-
-            Constraint: Do not include technical SQL jargon (like "JOIN," "WHERE," or "FLOAT"). Do not include any introductory text or "extra info"—only the question itself.
-
-            Numbers: If there are numbers, do not spell out the numbers, just leave it in numbers. E.g 5 do not spell out "five", Code name contains number like ID10, leave it as ID10
-
-            Tone: Professional, precise, and clinical."""
+        "Role: You are a specialized SQL-Medical Auditor.\n\n"
+        "Task: Translate the DuckDB SQL query into a single, concise interrogative sentence "
+        "directed at a physician.\n\n"
+        "Requirements:\n"
+        "- The output must be exactly one sentence.\n"
+        "- Explicitly state the population, medical codes, date ranges, and logical filters.\n"
+        "- Do not include SQL jargon (JOIN, WHERE, FLOAT, etc.).\n"
+        "- Do not add introductory text — only the question itself.\n"
+        "- Leave numbers as digits; do not spell them out.\n"
+        "- Tone: professional, precise, clinical."
     )
-    
-    resp = llm_explainer.invoke([
+
+    resp = llm.invoke([
         SystemMessage(content=system_message),
-        HumanMessage(content=f"SQL: {sql}")
+        HumanMessage(content=f"SQL: {sql}"),
     ])
-    
+
     return resp.content.strip()
 
+
 def _strip_code_fences(text: str) -> str:
-    """
-    Removes Markdown code fences like ```json ... ``` or ``` ... ```
-    """
     text = text.strip()
-    # Matches ```json\n...\n``` or ```\n...\n```
     m = re.match(r"^```(?:json)?\s*(.*?)\s*```$", text, flags=re.DOTALL | re.IGNORECASE)
     if m:
         return m.group(1).strip()
     return text
-

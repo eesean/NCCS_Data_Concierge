@@ -50,10 +50,12 @@ def _get_cancer_info_impl(query: str, k: int = 3) -> str:
 @tool
 def get_cancer_info(query: str) -> str:
     """
-    Retrieve relevant ICD-10-AM cancer codes and descriptions for mapping cancer types to codes.
-    Call this when the user asks about cancer types, diagnoses, or ICD codes (e.g. colorectal, lung, breast).
-    Returns matching ICD-10 codes (e.g. C18–C20 for colorectal) and descriptions to use in WHERE clauses.
-    Input: Cancer type or diagnosis term (e.g. "colorectal cancer", "lip cancer", "oesophagus").
+    Retrieve ICD-10-AM cancer reference text for ONE cancer topic (RAG over icd10_cancer_reference).
+    Each chunk includes SQL_FILTER (ready ICD10 LIKE predicates) and ICD10_CODES (allowed C-prefixes only).
+
+    After this tool returns, copy ONLY the SQL_FILTER / ICD10_CODES from that ToolMessage into your SQL.
+    Use condition_occurrence.ICD10 — never invent columns such as ICDO3 or add C-codes not listed in that message.
+    Input: short cancer term (e.g. "colorectal cancer", "lung cancer").
     """
     return _get_cancer_info_impl(query, k=3)
 

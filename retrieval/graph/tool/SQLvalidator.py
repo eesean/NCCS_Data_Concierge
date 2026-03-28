@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 import os
+import re
 import time
 
 import duckdb
@@ -326,6 +327,16 @@ def validate_sql_query(sql: str) -> str:
     """Validate a DuckDB SQL query for safety and performance issues.
     Call this after generating SQL to confirm it is safe before finalizing.
     Returns a summary of issues found, or confirms the query is valid."""
+    # Common LLM hallucination — not a column on condition_occurrence in this project.
+    if re.search(r"\bICDO3\b", sql, re.IGNORECASE):
+        return (
+            "Safety issues found — invalid column ICDO3 (not in schema).\n"
+            "- Use condition_occurrence.ICD10 only, with LIKE patterns copied verbatim "
+            "from the latest get_cancer_info ToolMessage (SQL_FILTER or ICD10_CODES).\n"
+            "- Do not add ICD code prefixes that are not on the ICD10_CODES line in that message.\n"
+            "Fix the SQL and call validate_sql_query again."
+        )
+
     con = _get_connection()
 
     allow_tables = set(PARQUETS.keys())
