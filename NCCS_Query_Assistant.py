@@ -35,29 +35,43 @@ SAMPLE_TEMPLATES = [
 ]
 
 ## sidebar
-_DEFAULT_MODEL = "qwen3:8b"
+_MODEL_OPTIONS = [
+    "qwen2.5:7b",
+    "qwen3:8b",
+    "deepseek-v3",
+    "llama3.1",
+]
+
+_MODEL_DESCRIPTIONS = {
+    "qwen2.5:7b": "Lightweight and fast. Good for straightforward queries like counts and filters.",
+    "qwen3:8b": "Strong native tool-calling support. Good for multi-step and cancer queries.",
+    "deepseek-v3": "Strong reasoning and SQL generation. Good for complex analytical queries.",
+    "llama3.1": "General-purpose model. Good baseline for standard queries.",
+}
 
 with st.sidebar:
     st.header("Settings")
-    selected_model = st.text_input(
-        "Ollama model tag",
-        value=_DEFAULT_MODEL,
-        help="Any model you have pulled via `ollama pull <tag>`. Must support native tool calling.",
+    selected_model = st.selectbox(
+        "Ollama model",
+        options=_MODEL_OPTIONS,
+        index=0,
+        help="Select a model you have pulled via `ollama pull <tag>`. All models must support tool calling.",
     )
     st.caption(
-        "Running locally via Ollama — no API key required. "
-        "Pull models with: `ollama pull qwen3:8b`"
+        f"Pull this model if not yet installed: `ollama pull {selected_model}`"
     )
-    st.markdown("### Recommended models")
-    st.markdown(
-        """
-        | Model tag | Notes |
-        |---|---|
-        | `qwen3:8b` | Default — strong tool-calling |
-        | `qwen3:14b` | Better reasoning, more RAM needed |
-        | `qwen2.5:7b` | Lighter alternative |
-        """
-    )
+    desc = _MODEL_DESCRIPTIONS.get(selected_model, "")
+    if desc:
+        st.info(desc)
+    with st.expander("Add a custom model"):
+        custom_model = st.text_input(
+            "Custom Ollama tag",
+            placeholder="e.g. qwen3:14b",
+            help="Enter any Ollama model tag you have pulled locally.",
+        )
+        if custom_model.strip():
+            selected_model = custom_model.strip()
+            st.caption(f"Using custom model: `{selected_model}`")
 
 st.title("NCCS Data Concierge")
 
@@ -110,11 +124,20 @@ def render_assistant_payload(resp: dict):
             st.write(value)
         else:
             st.metric(metric, value)
+        final_sql = resp.get("final_sql", "")
+        if final_sql and final_sql != "No SQL found":
+            with st.expander("SQL executed", expanded=False):
+                st.code(final_sql, language="sql")
         return
 
     if resp.get("columns") and resp.get("rows") is not None:
         df = pd.DataFrame(resp["rows"], columns=resp["columns"])
         st.dataframe(df, use_container_width=True, hide_index=True)
+
+    final_sql = resp.get("final_sql", "")
+    if final_sql and final_sql != "No SQL found":
+        with st.expander("SQL executed", expanded=False):
+            st.code(final_sql, language="sql")
 
 # for chat history
 for m in st.session_state.messages:
@@ -166,7 +189,7 @@ if prompt and not st.session_state.processing:
                 f"{API_URL}/ask/stream",
                 json={"question": prompt, "model": selected_model, "history": st.session_state.messages},
                 stream=True,
-                timeout=600,
+                timeout=180,
             )
             r.raise_for_status()
 
