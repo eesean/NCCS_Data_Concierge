@@ -10,7 +10,6 @@ import duckdb
 import sqlglot
 from sqlglot import exp
 from dotenv import load_dotenv
-from langchain_core.tools import tool
 
 # SQLvalidator.py is at retrieval/graph/tool/ → parents[3] is data_concierge/
 load_dotenv(Path(__file__).parents[3] / ".env")
@@ -321,7 +320,6 @@ def _get_connection() -> duckdb.DuckDBPyConnection:
     return _con
 
 
-@tool
 def validate_sql_query(sql: str) -> str:
     """Validate a DuckDB SQL query for safety and performance issues.
     Call this after generating SQL to confirm it is safe before finalizing.
