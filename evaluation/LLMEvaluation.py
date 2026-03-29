@@ -339,4 +339,5 @@ NCCS_Test_case = [
 
 evaluation_data = evaluate_llm_performance(models, NCCS_Test_case,qe)
 print(evaluation_data)
-evaluation_data.to_excel("nccs_evaluation_results(NCCS_test_paid_V3).xlsx",index=False)
+file_path = "../eval_files/nccs_evaluation_results.csv"
+evaluation_data.to_csv(file_path, index=False)

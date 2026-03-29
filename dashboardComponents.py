@@ -9,7 +9,7 @@ METRIC_COLS = [
     "Normalized Semantic Score",
 ]
 
-SCORE_COL = "Calculated Score"
+SCORE_COL = "Efficiency Score"
 
 # -------------------------
 # Filters

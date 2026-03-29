@@ -56,7 +56,7 @@ def evaluate_live_query(prompt: str, model: str, generated_sql: str, latency: fl
             row_data["Error Message"] += f" | Eval Error: {str(e)}"
 
     # 3. Append to CSV (Create if it doesn't exist)
-    csv_path = "live_query_logs.csv"
+    csv_path = "eval_files/live_query_logs.csv"
     df = pd.DataFrame([row_data])
     df["Log Transformed Tokens"] = df["Total Tokens"].apply(lambda x: round(math.log(x + 1), 3)) # Log transform for better scaling
     columns_to_normalize = ["Latency (s)", "Complexity Score", "Log Transformed Tokens", "Semantic Score"]
