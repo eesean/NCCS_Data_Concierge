@@ -14,14 +14,13 @@ st.set_page_config(page_title="LLM Score Dashboard", layout="wide")
 st.title("AI Model Performance Dashboard")
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
-MASTER_FILE = ROOT_DIR / "data" / "nccs_evaluation_resultsNCCS_test_paid_edited_normalization_to_exclude (1).xlsx"
-SHEET_NAME = "Sheet1"
+MASTER_FILE = ROOT_DIR / "eval_files" / "nccs_evaluation_results.csv"
 
 if not MASTER_FILE.exists():
-    st.error(f"Missing Excel file: {MASTER_FILE}")
+    st.error(f"Missing CSV file: {MASTER_FILE}")
     st.stop()
 
-df_full = pd.read_excel(MASTER_FILE, sheet_name=SHEET_NAME)
+df_full = pd.read_csv(MASTER_FILE)
 
 # Step 1: sidebar filters
 df_full_f, df_scores_f = compute_filters(df_full)
