@@ -1,7 +1,6 @@
-from langchain_core.tools import tool
 from retrieval.graph.tool.SQLvalidator import _get_connection
 
-@tool
+
 def get_data(sql: str) -> str:
     """Execute a validated DuckDB SQL query against the parquet dataset and return the results.
     Only call this after validate_sql_query has confirmed the SQL is valid.

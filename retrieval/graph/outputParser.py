@@ -1,9 +1,9 @@
 """
-Output parser for the ReAct graph.
+Output parser for the Ollama native tool-calling agent.
 
-The LLM's final AIMessage often wraps the data in commentary text.
-These helpers extract the raw JSON produced by get_data directly from
-the ToolMessage in the graph state — bypassing any LLM text wrapping.
+Messages are plain dicts with 'role' keys rather than LangChain message objects.
+These helpers extract the raw JSON from get_data tool results and the final
+assistant text from the message history returned by run_agent().
 """
 import json
 from typing import Optional, List
@@ -11,14 +11,13 @@ from typing import Optional, List
 
 def extract_data_json(messages: list) -> Optional[str]:
     """
-    Return the raw JSON string from the LAST get_data ToolMessage, or None
-    if get_data was not called. Uses the last result so we prefer the agent's
-    final (successful) execution over earlier failed attempts.
+    Return the raw JSON string from the LAST get_data tool result, or None
+    if get_data was not called.
     """
     found = None
     for msg in messages:
-        if type(msg).__name__ == "ToolMessage" and getattr(msg, "name", None) == "get_data":
-            found = msg.content
+        if isinstance(msg, dict) and msg.get("role") == "tool" and msg.get("name") == "get_data":
+            found = msg.get("content")
     return found
 
 
@@ -38,15 +37,15 @@ def parse_data_json(messages: list) -> Optional[List[dict]]:
 
 def extract_final_text(messages: list) -> Optional[str]:
     """
-    Return the last AIMessage text that is not a tool call, or None.
-    This is the LLM's natural-language summary of the results — useful as
-    a caption alongside the data table in a UI.
+    Return the last assistant message that is not a tool call, or None.
+    This is the LLM's natural-language summary of the results.
     """
     for msg in reversed(messages):
         if (
-            type(msg).__name__ == "AIMessage"
-            and not getattr(msg, "tool_calls", None)
-            and getattr(msg, "content", "")
+            isinstance(msg, dict)
+            and msg.get("role") == "assistant"
+            and not msg.get("tool_calls")
+            and msg.get("content")
         ):
-            return msg.content
+            return msg["content"]
     return None

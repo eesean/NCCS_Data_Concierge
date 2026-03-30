@@ -35,53 +35,50 @@ SAMPLE_TEMPLATES = [
 ]
 
 ## sidebar
-MODEL_OPTIONS = [
-    "arcee-ai/trinity-large-preview:free",
-    "stepfun/step-3.5-flash:free",
-    "z-ai/glm-4.5-air:free",
-    "nvidia/nemotron-3-nano-30b-a3b:free"
-
+_MODEL_OPTIONS = [
+    "qwen2.5-coder:7b",
+    "qwen3:8b",
+    "deepseek-v3",
+    "llama3.1",
 ]
 
-MODEL_DESCRIPTIONS = {
-    "arcee-ai/trinity-large-preview:free": (
-        "Good for relatively complex queries as it has stronger reasoning performance and is more reliable at multi-step SQL planning."
-    ),
-    "stepfun/step-3.5-flash:free": (
-        "Good for schema-heavy queries where there might be more tables and columns as it is optimized for speed and long-context."
-    ),
-    "z-ai/glm-4.5-air:free": (
-        "Good for multi-step workflows as it is designed for agentic use and typically handles tool usage and structured steps more consistently."
-    ),
-    "nvidia/nemotron-3-nano-30b-a3b:free": (
-        "Good for relatively straightforward queries like counts or filters as it is an efficient model that has good latency."
-    ),
+_MODEL_DESCRIPTIONS = {
+    "qwen2.5:7b": "Lightweight and fast. Good for straightforward queries like counts and filters.",
+    "qwen3:8b": "Strong native tool-calling support. Good for multi-step and cancer queries.",
+    "deepseek-v3": "Strong reasoning and SQL generation. Good for complex analytical queries.",
+    "llama3.1": "General-purpose model. Good baseline for standard queries.",
 }
 
 with st.sidebar:
     st.header("Settings")
-    selected_model = st.selectbox("AI model", MODEL_OPTIONS, index=0)
-    st.caption(
-        "Only models with tool-calling support work. Add more from openrouter.ai/collections/tool-calling-models"
+    selected_model = st.selectbox(
+        "Ollama model",
+        options=_MODEL_OPTIONS,
+        index=0,
+        help="Select a model you have pulled via `ollama pull <tag>`. All models must support tool calling.",
     )
-    st.markdown("### Model guide")
-    for m in MODEL_OPTIONS:
-        desc = MODEL_DESCRIPTIONS.get(m, "")
-        st.markdown(
-            f"""
-            <div style="margin: 6px 0 10px 0;">
-              <div style="font-weight: 600;">{m}</div>
-              <div style="color: #999; font-size: 0.85em; line-height: 1.25;">{desc}</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
+    st.caption(
+        f"Pull this model if not yet installed: `ollama pull {selected_model}`"
+    )
+    desc = _MODEL_DESCRIPTIONS.get(selected_model, "")
+    if desc:
+        st.info(desc)
+    with st.expander("Add a custom model"):
+        custom_model = st.text_input(
+            "Custom Ollama tag",
+            placeholder="e.g. qwen3:14b",
+            help="Enter any Ollama model tag you have pulled locally.",
         )
+        if custom_model.strip():
+            selected_model = custom_model.strip()
+            st.caption(f"Using custom model: `{selected_model}`")
 
 st.title("NCCS Data Concierge")
 
 _TOOL_LABELS = {
-    "get_schema_context": "Fetching schema context and sql templates",
-    "get_cancer_info": "Looking up cancer ICD codes",
+    "get_schema_context": "Fetching schema context",
+    "get_sql_template": "Fetching SQL templates",
+    "get_cancer_info": "Looking up cancer ICD-10 codes",
     "validate_sql_query": "Validating SQL",
     "get_data": "Executing query",
 }
@@ -109,9 +106,13 @@ def _render_steps(steps: list):
 
 def render_assistant_payload(resp: dict):
     _render_steps(resp.get("steps", []))
-    print("DEBUG RESPONSE:", resp)
     if resp.get("status") != "ok":
-        st.info("💡 **Try again:** Use a different model or simplify your question.")
+        err_msg = resp.get("message", "An error occurred.")
+        reasons = resp.get("reasons", [])
+        st.error(f"**Error:** {err_msg}")
+        if reasons:
+            st.code("\n".join(str(r) for r in reasons), language="text")
+        st.info("💡 **Try again:** Rephrase your question or check that Ollama is running.")
         return
 
     st.write(resp.get("message", ""))
@@ -123,11 +124,20 @@ def render_assistant_payload(resp: dict):
             st.write(value)
         else:
             st.metric(metric, value)
+        final_sql = resp.get("final_sql", "")
+        if final_sql and final_sql != "No SQL found":
+            with st.expander("SQL executed", expanded=False):
+                st.code(final_sql, language="sql")
         return
 
     if resp.get("columns") and resp.get("rows") is not None:
         df = pd.DataFrame(resp["rows"], columns=resp["columns"])
         st.dataframe(df, use_container_width=True, hide_index=True)
+
+    final_sql = resp.get("final_sql", "")
+    if final_sql and final_sql != "No SQL found":
+        with st.expander("SQL executed", expanded=False):
+            st.code(final_sql, language="sql")
 
 # for chat history
 for m in st.session_state.messages:
@@ -179,7 +189,7 @@ if prompt and not st.session_state.processing:
                 f"{API_URL}/ask/stream",
                 json={"question": prompt, "model": selected_model, "history": st.session_state.messages},
                 stream=True,
-                timeout=120,
+                timeout=180,
             )
             r.raise_for_status()
 

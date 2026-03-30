@@ -1,22 +1,24 @@
 import os
 from dotenv import load_dotenv
-from langchain_openai import ChatOpenAI
+from ollama import chat as _ollama_chat
 
 load_dotenv()
 
-DEFAULT_MODEL = "arcee-ai/trinity-large-preview:free"
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 
 
-def get_llm(model_name: str = DEFAULT_MODEL) -> ChatOpenAI:
-    return ChatOpenAI(
-        model=model_name,
-        base_url="https://openrouter.ai/api/v1",
-        api_key=os.getenv("OPENROUTER_API_KEY"),
-        extra_body={
-            "provider": {"require_parameters": True}
-        },
-    )
+def ollama_chat(messages: list, tools: list = None, model: str = None) -> dict:
+    """Thin wrapper around ollama.chat() for consistent call signature.
 
-
-# Module-level singleton kept for notebook / backward-compat imports
-llm = get_llm()
+    think=False disables qwen3's extended chain-of-thought mode, which
+    otherwise runs for several minutes per call before producing a response.
+    """
+    kwargs = {
+        "model": model ,
+        "messages": messages,
+        "think": False,
+    }
+    if tools:
+        kwargs["tools"] = tools
+    return _ollama_chat(**kwargs)

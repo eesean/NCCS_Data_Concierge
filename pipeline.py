@@ -1,21 +1,120 @@
+"""
+Hybrid pipeline for the NCCS Query Assistant.
+
+Fixed execution order:
+  1. get_schema_context  — hardcoded, always runs first
+  2. get_sql_template    — hardcoded, always runs first
+  3. get_cancer_info     — LLM-decided (offered as a tool; LLM calls it if relevant)
+  4. LLM: generate SQL   — LLM generates SQL from all accumulated context
+  5. validate_sql_query  — hardcoded loop until SQL passes (max 3 tries)
+  6. get_data            — hardcoded, always runs after validation passes
+  7. LLM: summarise results
+"""
+
 import json
+import re
 import time
-from typing import Any, Dict, Generator, List, Optional, Tuple
+from typing import Any, Dict, Generator, List, Optional
 
-from langchain_core.messages import ToolMessage,SystemMessage,HumanMessage
-
-from retrieval.graph.node.workflow import build_graph
+from retrieval.llm import ollama_chat, OLLAMA_MODEL
 from retrieval.graph.outputParser import parse_data_json, extract_final_text, extract_data_json
-from retrieval.graph.tool.vectorRag import get_schema_context, get_sql_template
+from retrieval.graph.tool.vectorRag import get_cancer_info, get_schema_context, get_sql_template
+from retrieval.graph.tool.SQLvalidator import validate_sql_query
+from retrieval.graph.tool.get_data import get_data
 from retrieval.graph.tool.evaluation_update import evaluate_live_query
-from retrieval.llm import DEFAULT_MODEL
 
+
+# ---------------------------------------------------------------------------
+# SQL extraction from raw LLM text
+# ---------------------------------------------------------------------------
+
+def _extract_sql(text: str) -> str:
+    """Pull a SELECT statement out of an LLM response."""
+    # Strip ```sql ... ``` fences
+    m = re.search(r"```(?:sql)?\s*(.*?)\s*```", text, re.DOTALL | re.IGNORECASE)
+    if m:
+        return m.group(1).strip()
+    # Fall back to first SELECT … found in the text
+    m = re.search(r"(SELECT\b.+)", text, re.DOTALL | re.IGNORECASE)
+    if m:
+        return m.group(1).strip()
+    return text.strip()
+
+
+# ---------------------------------------------------------------------------
+# Validation success check
+# ---------------------------------------------------------------------------
+
+def _sql_passed(validation_result: str) -> bool:
+    """True when the validator says the SQL is safe to execute."""
+    lower = validation_result.lower()
+    return "safety issues" not in lower and (
+        "sql is valid" in lower
+        or "sql passed safety checks" in lower
+        or "proceed to get_data" in lower
+    )
+
+
+# ---------------------------------------------------------------------------
+# System prompts
+# ---------------------------------------------------------------------------
+
+# Tool schema offered to the LLM during the context-gathering phase.
+# Only get_cancer_info is available — schema/template fetching is already done.
+_CANCER_INFO_TOOL = [
+    {
+        "type": "function",
+        "function": {
+            "name": "get_cancer_info",
+            "description": (
+                "Retrieve ICD-10-AM cancer reference text for a specific cancer type. "
+                "Call this when the user's question involves a particular cancer. "
+                "Returns SQL_FILTER (ready ICD10 LIKE predicates) and ICD10_CODES. "
+                "Copy SQL_FILTER verbatim into the WHERE clause — never invent codes like ICDO3."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Short cancer term, e.g. 'colorectal cancer', 'lung cancer'.",
+                    }
+                },
+                "required": ["query"],
+            },
+        },
+    }
+]
+
+_CONTEXT_SYSTEM = """/no_think
+You are an expert assistant for the NCCS (National Cancer Centre Singapore) dataset.
+
+You have been given the database schema and SQL examples.
+If the user's question involves a specific cancer type, call get_cancer_info to retrieve the correct ICD-10 codes.
+Otherwise do nothing — just acknowledge you are ready.
+
+Do NOT generate SQL yet.
+"""
+
+_SQL_GEN_PROMPT = (
+    "Now generate the DuckDB SQL query to answer the question above.\n"
+    "Rules:\n"
+    "- Return ONLY the raw SQL statement — no explanation, no markdown, no code fences.\n"
+    "- Use ONLY columns and tables from the schema.\n"
+    "- For cancer queries, copy the SQL_FILTER from get_cancer_info verbatim — never use ICDO3.\n"
+    "- Use DuckDB-compatible syntax only.\n"
+)
+
+_SUMMARY_SYSTEM = """/no_think
+You are a data analyst. Summarise the query results in 1-2 clear sentences for a non-technical user.
+"""
+
+
+# ---------------------------------------------------------------------------
+# Response builder
+# ---------------------------------------------------------------------------
 
 def _build_response(messages: list) -> Dict[str, Any]:
-    """
-    Convert a list of agent messages into the response dict shape the frontend expects.
-    Does not include 'steps' — callers add that separately.
-    """
     raw_data = extract_data_json(messages)
     final_text = extract_final_text(messages) or ""
 
@@ -23,7 +122,7 @@ def _build_response(messages: list) -> Dict[str, Any]:
         return {
             "status": "error",
             "message": "Could not retrieve data for your question.",
-            "reasons": ["get_data was not reached by the agent"],
+            "reasons": ["get_data was not reached"],
         }
 
     if raw_data.startswith("EXECUTION_ERROR"):
@@ -54,8 +153,7 @@ def _build_response(messages: list) -> Dict[str, Any]:
     columns = list(data[0].keys())
     rows = [[row.get(col) for col in columns] for row in data]
 
-    is_scalar = len(columns) == 1 and len(rows) == 1
-    if is_scalar:
+    if len(columns) == 1 and len(rows) == 1:
         return {
             "status": "ok",
             "message": final_text,
@@ -75,29 +173,33 @@ def _build_response(messages: list) -> Dict[str, Any]:
     }
 
 
+# ---------------------------------------------------------------------------
+# SQL extractor for evaluation logging
+# ---------------------------------------------------------------------------
 
-def _get_schema_and_messages(question: str) -> list:
-    """Provides schema and SQL prompt templates as System Context."""
-    schema_data = get_schema_context(question)
-    sql_template_data = get_sql_template(question)
+def get_latest_sql(messages: list) -> str:
+    for msg in reversed(messages):
+        if isinstance(msg, dict) and msg.get("role") == "assistant":
+            content = msg.get("content", "")
+            if isinstance(content, str) and re.search(r"\bSELECT\b", content, re.IGNORECASE):
+                return _extract_sql(content)
+    return "No SQL found"
 
-    # Use a SystemMessage for context that should not be 'called' as a tool
-    system_content = (
-        f"You have access to the following database schema:\n{schema_data}\n\n"
-        f"Relevant SQL examples (few-shot) for similar questions:\n{sql_template_data}"
-    )
-    system_msg = SystemMessage(content=system_content)
-    
-    # Include the user's question so the graph knows what to process immediately
-    user_msg = HumanMessage(content=question)
-    
-    return [system_msg, user_msg] # Need to return system and user message for Open AI to work. 
 
-def stream_question_agent(question: str, model: Optional[str] = None, history: Optional[List[Dict]] = None) -> Generator[str, None, None]:
+# ---------------------------------------------------------------------------
+# Main streaming generator
+# ---------------------------------------------------------------------------
+
+def stream_question_agent(
+    question: str,
+    model: Optional[str] = None,
+    history: Optional[List[Dict]] = None,
+) -> Generator[str, None, None]:
+    print(f"PIPELINE DEBUG: model is {model}")
     """
-    Generator that runs the ReAct agent and yields Server-Sent Events (SSE).
+    Deterministic pipeline that yields SSE events.
 
-    Event types emitted:
+    Event types:
       {"type": "step_call",   "tool": <name>}
       {"type": "step_result", "tool": <name>, "snippet": <str>}
       {"type": "done",        ...response payload...}
@@ -105,161 +207,218 @@ def stream_question_agent(question: str, model: Optional[str] = None, history: O
     """
     def sse(data: dict) -> str:
         return f"data: {json.dumps(data)}\n\n"
-    start_time = time.perf_counter() ## Timer starts for latency
-    try:
-        # Get schema once before the graph (ensures single call)
-        schema_messages = _get_schema_and_messages(question)
 
-        # Add conversation history
-        if history:
-            cleaned_history = []
+    def snip(text: str, n: int = 200) -> str:
+        return (text[:n] + "…") if len(text) > n else text
 
-            for msg in history[:-1][-6:]:  
-                role = msg.get("role")
-                content = msg.get("content")
-
-                # User messages
-                if role == "user" and isinstance(content, str):
-                    cleaned_history.append(HumanMessage(content=content))
-    
-                # Assistant messages (only pass previous SQL, answers not included)
-                elif role == "assistant":
-                    if isinstance(content, dict):
-                        sql = content.get("final_sql")
-
-                        if sql:
-                            assistant_text = f"Previous SQL query:\n{sql}"
-                            cleaned_history.append(SystemMessage(content=assistant_text))
-
-            # Insert history before the current question
-            schema_messages = (
-                [schema_messages[0]]
-                + cleaned_history
-                + [schema_messages[-1]]
-            )
-
-        graph = build_graph(model or DEFAULT_MODEL)
-        initial_state = {"query": question, "final_answer": "", "messages": schema_messages}
-    except Exception as e:
-        yield sse({"type": "error", "status": "error", "message": "Agent setup failed.", "reasons": [str(e)]})
-        return
-
-    all_messages: List[Any] = list(schema_messages)
+    start_time = time.perf_counter()
+    all_messages: List[dict] = []   # used by _build_response
+    sql = ""
     validation_tries = 0
-
-    try:
-        # Emit schema step (called outside graph)
-        yield sse({"type": "step_call", "tool": "get_schema_context"})
-        schema_content = str(schema_messages[0].content)
-        yield sse({"type": "step_result", "tool": "get_schema_context", "snippet": schema_content[:200] + "…" if len(schema_content) > 200 else schema_content})
-
-        for chunk in graph.stream(
-            initial_state,
-            stream_mode="updates",
-            config={"recursion_limit": 20},
-        ):  
-            for _node, node_output in chunk.items():
-                new_msgs = node_output.get("messages", [])
-                all_messages.extend(new_msgs)
-
-                for msg in new_msgs:
-                    msg_type = type(msg).__name__
-                    if msg_type == "AIMessage" and getattr(msg, "tool_calls", None):
-                        #print("Tools: " + json.dumps(msg.tool_calls, indent=2, default=str))
-                        for tc in msg.tool_calls:
-                            tool_name = tc.get("name")
-                            yield sse({"type": "step_call", "tool": tool_name})
-                    elif msg_type == "ToolMessage":
-                        tool_name = getattr(msg, "name", "unknown")
-                        if tool_name == "validate_sql_query":
-                            validation_tries += 1
-                        content = str(msg.content)
-                        snippet = content[:200] + "…" if len(content) > 200 else content
-                        yield sse({"type": "step_result", "tool": tool_name, "snippet": snippet})
-
-    except Exception as e:
-        yield sse({"type": "error", "status": "error", "message": "Agent execution failed.", "reasons": [str(e)]})
-        return
-    
-    # --- Token & Cost Tracking Logic --- HQ added for metrics extractions
     input_tokens = 0
     output_tokens = 0
-    total_tokens = 0
-    upstream_cost = 0.0
-    upstream_prompt_cost = 0.0
-    upstream_completion_cost = 0.0
 
-    for msg in all_messages:
-        # 1. Standard Token Usage
-        if hasattr(msg, "usage_metadata") and msg.usage_metadata:
-            meta = msg.usage_metadata
-            input_tokens += meta.get("input_tokens", 0)
-            output_tokens += meta.get("output_tokens", 0)
-            total_tokens += meta.get("total_tokens", 0)
+    # ------------------------------------------------------------------
+    # STEP 1 — Schema context + SQL templates (hardcoded, always)
+    # ------------------------------------------------------------------
+    try:
+        yield sse({"type": "step_call", "tool": "get_schema_context"})
+        schema_data = get_schema_context(question)
+        yield sse({"type": "step_result", "tool": "get_schema_context", "snippet": snip(schema_data)})
 
-        # 2. Custom Cost Details (Provider-specific metadata)
-        if hasattr(msg, "response_metadata") and msg.response_metadata:
-            token_usage = msg.response_metadata.get("token_usage", {})
-            cost_details = token_usage.get("cost_details", {})
-            
-            upstream_cost += float(token_usage.get("cost", 0.0))
-            upstream_prompt_cost += float(cost_details.get("upstream_inference_prompt_cost", 0.0))
-            upstream_completion_cost += float(cost_details.get("upstream_inference_completions_cost", 0.0))
+        yield sse({"type": "step_call", "tool": "get_sql_template"})
+        sql_template_data = get_sql_template(question)
+        yield sse({"type": "step_result", "tool": "get_sql_template", "snippet": snip(sql_template_data)})
+    except Exception as e:
+        yield sse({"type": "error", "status": "error", "message": "Failed to load schema context.", "reasons": [str(e)]})
+        return
 
-    # --- SQL and Final Response Build ---
-    final_sql = get_latest_sql(all_messages)
+    # ------------------------------------------------------------------
+    # STEP 2 — LLM decides whether to call get_cancer_info
+    # ------------------------------------------------------------------
+    system_content = (
+        _CONTEXT_SYSTEM
+        + f"\n\nDatabase schema:\n{schema_data}"
+        + f"\n\nSQL examples (few-shot):\n{sql_template_data}"
+    )
+    gen_messages = [{"role": "system", "content": system_content}]
+
+    # Inject recent conversation history
+    if history:
+        for msg in history[:-1][-6:]:
+            role = msg.get("role")
+            content = msg.get("content")
+            if role == "user" and isinstance(content, str):
+                gen_messages.append({"role": "user", "content": content})
+            elif role == "assistant" and isinstance(content, dict):
+                prev_sql = content.get("final_sql")
+                if prev_sql:
+                    gen_messages.append({"role": "assistant", "content": f"Previous SQL used:\n{prev_sql}"})
+
+    gen_messages.append({"role": "user", "content": question})
+
+    # Mini tool-calling loop — only get_cancer_info is offered
+    try:
+        for _ in range(3):
+            resp = ollama_chat(gen_messages, tools=_CANCER_INFO_TOOL, model=model)
+            assistant_msg = resp["message"]
+            if hasattr(assistant_msg, "__dict__"):
+                assistant_msg = dict(assistant_msg)
+            input_tokens += resp.get("prompt_eval_count", 0) or 0
+            output_tokens += resp.get("eval_count", 0) or 0
+            gen_messages.append(assistant_msg)
+
+            tool_calls = assistant_msg.get("tool_calls") or []
+            if not tool_calls:
+                break  # LLM decided no cancer info is needed
+
+            for tc in tool_calls:
+                fn_obj = tc.get("function", {})
+                if hasattr(fn_obj, "__dict__"):
+                    fn_obj = dict(fn_obj)
+                if fn_obj.get("name") == "get_cancer_info":
+                    args = fn_obj.get("arguments", {})
+                    if isinstance(args, str):
+                        try:
+                            args = json.loads(args)
+                        except json.JSONDecodeError:
+                            args = {}
+                    yield sse({"type": "step_call", "tool": "get_cancer_info"})
+                    cancer_result = get_cancer_info(**args)
+                    yield sse({"type": "step_result", "tool": "get_cancer_info", "snippet": snip(cancer_result)})
+                    gen_messages.append({
+                        "role": "tool",
+                        "name": "get_cancer_info",
+                        "content": cancer_result,
+                    })
+    except Exception as e:
+        yield sse({"type": "error", "status": "error", "message": "Context gathering failed.", "reasons": [str(e)]})
+        return
+
+    # ------------------------------------------------------------------
+    # STEP 3 — Generate SQL (LLM call, no tools)
+    # ------------------------------------------------------------------
+    try:
+        gen_messages.append({"role": "user", "content": _SQL_GEN_PROMPT})
+        resp = ollama_chat(gen_messages, model = model)   # no tools — pure SQL generation
+        raw = resp["message"].get("content") or ""
+        input_tokens += resp.get("prompt_eval_count", 0) or 0
+        output_tokens += resp.get("eval_count", 0) or 0
+        sql = _extract_sql(raw)
+        gen_messages.append({"role": "assistant", "content": raw})
+        all_messages.append({"role": "assistant", "content": raw})
+    except Exception as e:
+        yield sse({"type": "error", "status": "error", "message": "SQL generation failed.", "reasons": [str(e)]})
+        return
+
+    # ------------------------------------------------------------------
+    # STEP 5 — Validate loop (LLM fixes until SQL passes, safety cap at 10)
+    # ------------------------------------------------------------------
+    last_validation = ""
+    validated = False
+    while validation_tries < 10:
+        try:
+            yield sse({"type": "step_call", "tool": "validate_sql_query"})
+            last_validation = validate_sql_query(sql)
+            validation_tries += 1
+            yield sse({"type": "step_result", "tool": "validate_sql_query", "snippet": snip(last_validation)})
+
+            if _sql_passed(last_validation):
+                validated = True
+                break
+
+            # Validation failed — ask LLM to fix and loop again
+            gen_messages.append({
+                "role": "user",
+                "content": (
+                    f"The SQL failed validation:\n{last_validation}\n\n"
+                    f"Current SQL:\n{sql}\n\n"
+                    "Fix the SQL so it passes validation. "
+                    "Return ONLY the corrected SQL statement, no explanation."
+                ),
+            })
+            resp = ollama_chat(gen_messages, model=model)
+            raw = resp["message"].get("content") or ""
+            input_tokens += resp.get("prompt_eval_count", 0) or 0
+            output_tokens += resp.get("eval_count", 0) or 0
+            sql = _extract_sql(raw)
+            gen_messages.append({"role": "assistant", "content": raw})
+            all_messages.append({"role": "assistant", "content": raw})
+
+        except Exception as e:
+            yield sse({"type": "error", "status": "error", "message": "SQL validation failed.", "reasons": [str(e)]})
+            return
+
+    if not validated:
+        yield sse({
+            "type": "done",
+            "status": "error",
+            "message": f"Could not generate a valid SQL query after {validation_tries} attempts.",
+            "reasons": [last_validation],
+            "final_sql": sql,
+            "validation_tries": validation_tries,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "total_tokens": input_tokens + output_tokens,
+            "cost": 0.0,
+            "prompt_cost": 0.0,
+            "completion_cost": 0.0,
+        })
+        return
+
+    # ------------------------------------------------------------------
+    # STEP 6 — Execute query
+    # ------------------------------------------------------------------
+    try:
+        yield sse({"type": "step_call", "tool": "get_data"})
+        data_result = get_data(sql)
+        yield sse({"type": "step_result", "tool": "get_data", "snippet": snip(data_result)})
+        all_messages.append({"role": "tool", "name": "get_data", "content": data_result})
+    except Exception as e:
+        yield sse({"type": "error", "status": "error", "message": "Query execution failed.", "reasons": [str(e)]})
+        return
+
+    # ------------------------------------------------------------------
+    # STEP 7 — Summarise results (LLM call)
+    # ------------------------------------------------------------------
+    try:
+        summary_resp = ollama_chat([
+            {"role": "system", "content": _SUMMARY_SYSTEM},
+            {"role": "user", "content": f"Question: {question}\n\nData:\n{data_result[:3000]}"},
+        ], model = model)
+        final_text = summary_resp["message"].get("content") or ""
+        input_tokens += summary_resp.get("prompt_eval_count", 0) or 0
+        output_tokens += summary_resp.get("eval_count", 0) or 0
+        all_messages.append({"role": "assistant", "content": final_text})
+    except Exception:
+        final_text = ""
+
+    # ------------------------------------------------------------------
+    # Emit final SSE event
+    # ------------------------------------------------------------------
+    latency = time.perf_counter() - start_time
     final = _build_response(all_messages)
-    
-    # Inject aggregated metadata
-    final["type"] = "done"
-    final["final_sql"] = final_sql
-    final["input_tokens"] = input_tokens
-    final["output_tokens"] = output_tokens
-    final["total_tokens"] = total_tokens
-    final["cost"] = upstream_cost
-    final["prompt_cost"] = upstream_prompt_cost
-    final["completion_cost"] = upstream_completion_cost
-    final["validation_tries"] = validation_tries
+    final.update({
+        "type": "done",
+        "final_sql": sql,
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": input_tokens + output_tokens,
+        "cost": 0.0,
+        "prompt_cost": 0.0,
+        "completion_cost": 0.0,
+        "validation_tries": validation_tries,
+    })
 
-    latency = time.perf_counter() - start_time ## Timer Ends
-
-    ## Run evaluation based off the query
-    ## It will updates the live scoreboard
     try:
         evaluate_live_query(
             prompt=question,
-            model=model or DEFAULT_MODEL,
-            generated_sql=final_sql,
+            model=model or OLLAMA_MODEL,
+            generated_sql=sql,
             latency=latency,
-            metrics=final
+            metrics=final,
         )
     except Exception as log_err:
-        print(f"Failed to log live query: {log_err}")
+        print(f"[eval] Failed to log query: {log_err}")
+
     yield sse(final)
-
-import re
-
-def get_latest_sql(all_messages: list) -> str: ## For latest SQL extraction
-    """
-    1. Prioritizes structured tool_calls (Index 4 style).
-    2. Falls back to Regex extraction from content (Index 6 style).
-    """
-    # 1. Search for structured tool calls (Most reliable)
-    for msg in reversed(all_messages):
-        if hasattr(msg, "tool_calls") and msg.tool_calls:
-            for tc in msg.tool_calls:
-                # Check for any tool that executes SQL
-                if tc.get("name") in ["get_data", "sql_db_query", "query_sql_db", "execute_sql"]:
-                    # Return the exact SQL string from 'args'
-                    return str(tc.get("args", {}).get("sql", ""))
-
-    # 2. Fallback to Regex for Index [6] style
-    sql_pattern = re.compile(r"SQL:\s*(.*?)(?:\n|$)", re.IGNORECASE | re.DOTALL)
-    for msg in reversed(all_messages):
-        content = getattr(msg, "content", "")
-        if isinstance(content, str):
-            match = sql_pattern.search(content)
-            if match:
-                return match.group(1).strip()
-    
-    return "No SQL query found in history."
