@@ -77,7 +77,7 @@ Rules:
         raise SQLGenError(f"Failed to parse LLM response. Raw: {content}") from e
 
 
-def explain_sql(sql: str, model_name: str = None) -> str:
+def explain_sql(sql: str, model: str = None) -> str:
     """
     Translate a SQL query into a concise clinical interrogative sentence.
     Used for adversarial validation in evaluation_update.py.
@@ -100,6 +100,6 @@ def explain_sql(sql: str, model_name: str = None) -> str:
         {"role": "user", "content": f"SQL: {sql}"},
     ]
 
-    response = ollama_chat(messages)
+    response = ollama_chat(messages, model=model)
     content = response["message"].get("content") or ""
     return content.strip()

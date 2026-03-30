@@ -13,12 +13,33 @@ from dashboardComponents import (
 st.set_page_config(page_title="LLM Score Dashboard", layout="wide")
 st.title("AI Model Performance Dashboard")
 
+# 1. Setup Directory Path
 ROOT_DIR = Path(__file__).resolve().parents[1]
-MASTER_FILE = ROOT_DIR / "eval_files" / "nccs_evaluation_results.csv"
+EVAL_DIR = ROOT_DIR / "eval_files"
 
-if not MASTER_FILE.exists():
-    st.error(f"Missing CSV file: {MASTER_FILE}")
+# 2. Scan for all CSV files
+if not EVAL_DIR.exists():
+    st.error(f"Directory not found: {EVAL_DIR}")
     st.stop()
+
+# Get list of filenames (sorted by newest first usually helps)
+csv_files = sorted([f.name for f in EVAL_DIR.glob("*.csv")], reverse=True)
+
+if not csv_files:
+    st.warning(f"No CSV files found in {EVAL_DIR}")
+    st.stop()
+
+# 3. Add the Dropdown at the top
+selected_filename = st.selectbox(
+    "Select Evaluation Run",
+    options=csv_files,
+    index=0,  # Defaults to the first (newest) file
+    help="Scanning 'eval_files' directory for results..."
+)
+
+# 4. Set the MASTER_FILE based on selection
+MASTER_FILE = EVAL_DIR / selected_filename
+
 
 df_full = pd.read_csv(MASTER_FILE)
 

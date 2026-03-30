@@ -195,6 +195,7 @@ def stream_question_agent(
     model: Optional[str] = None,
     history: Optional[List[Dict]] = None,
 ) -> Generator[str, None, None]:
+    print(f"PIPELINE DEBUG: model is {model}")
     """
     Deterministic pipeline that yields SSE events.
 
@@ -259,7 +260,7 @@ def stream_question_agent(
     # Mini tool-calling loop — only get_cancer_info is offered
     try:
         for _ in range(3):
-            resp = ollama_chat(gen_messages, tools=_CANCER_INFO_TOOL)
+            resp = ollama_chat(gen_messages, tools=_CANCER_INFO_TOOL, model=model)
             assistant_msg = resp["message"]
             if hasattr(assistant_msg, "__dict__"):
                 assistant_msg = dict(assistant_msg)
@@ -299,7 +300,7 @@ def stream_question_agent(
     # ------------------------------------------------------------------
     try:
         gen_messages.append({"role": "user", "content": _SQL_GEN_PROMPT})
-        resp = ollama_chat(gen_messages)   # no tools — pure SQL generation
+        resp = ollama_chat(gen_messages, model = model)   # no tools — pure SQL generation
         raw = resp["message"].get("content") or ""
         input_tokens += resp.get("prompt_eval_count", 0) or 0
         output_tokens += resp.get("eval_count", 0) or 0
@@ -336,7 +337,7 @@ def stream_question_agent(
                     "Return ONLY the corrected SQL statement, no explanation."
                 ),
             })
-            resp = ollama_chat(gen_messages)
+            resp = ollama_chat(gen_messages, model=model)
             raw = resp["message"].get("content") or ""
             input_tokens += resp.get("prompt_eval_count", 0) or 0
             output_tokens += resp.get("eval_count", 0) or 0
@@ -384,7 +385,7 @@ def stream_question_agent(
         summary_resp = ollama_chat([
             {"role": "system", "content": _SUMMARY_SYSTEM},
             {"role": "user", "content": f"Question: {question}\n\nData:\n{data_result[:3000]}"},
-        ])
+        ], model = model)
         final_text = summary_resp["message"].get("content") or ""
         input_tokens += summary_resp.get("prompt_eval_count", 0) or 0
         output_tokens += summary_resp.get("eval_count", 0) or 0

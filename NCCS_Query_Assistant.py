@@ -36,7 +36,7 @@ SAMPLE_TEMPLATES = [
 
 ## sidebar
 _MODEL_OPTIONS = [
-    "qwen2.5:7b",
+    "qwen2.5-coder:7b",
     "qwen3:8b",
     "deepseek-v3",
     "llama3.1",
