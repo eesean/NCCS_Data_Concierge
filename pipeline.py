@@ -350,7 +350,7 @@ def stream_question_agent(
             return
 
     if not validated:
-        yield sse({
+        final_error = {
             "type": "done",
             "status": "error",
             "message": f"Could not generate a valid SQL query after {validation_tries} attempts.",
@@ -363,7 +363,26 @@ def stream_question_agent(
             "cost": 0.0,
             "prompt_cost": 0.0,
             "completion_cost": 0.0,
-        })
+        }
+
+        try:
+            eval_row = evaluate_live_query(
+                prompt=question,
+                model=model or OLLAMA_MODEL,
+                generated_sql=sql,
+                latency=time.perf_counter() - start_time,
+                metrics=final_error,
+            )
+            final_error.update({
+                "complexity_score": eval_row.get("Complexity Score"),
+                "complexity_level": eval_row.get("Complexity Level"),
+                "semantic_score": eval_row.get("Semantic Score"),
+                "generated_explanation": eval_row.get("Generated Explanation"),
+            })
+        except Exception as log_err:
+            print(f"[eval] Failed to log invalid query: {log_err}")
+
+        yield sse(final_error)
         return
 
     # ------------------------------------------------------------------
@@ -411,13 +430,20 @@ def stream_question_agent(
     })
 
     try:
-        evaluate_live_query(
+        eval_row = evaluate_live_query(
             prompt=question,
             model=model or OLLAMA_MODEL,
             generated_sql=sql,
             latency=latency,
             metrics=final,
         )
+
+        final.update({
+            "complexity_score": eval_row.get("Complexity Score"),
+            "complexity_level": eval_row.get("Complexity Level"),
+            "semantic_score": eval_row.get("Semantic Score"),
+            "generated_explanation": eval_row.get("Generated Explanation"),
+        })
     except Exception as log_err:
         print(f"[eval] Failed to log query: {log_err}")
 

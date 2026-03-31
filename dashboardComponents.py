@@ -11,6 +11,59 @@ METRIC_COLS = [
 
 SCORE_COL = "Efficiency Score"
 
+# Canonical complexity level order — used everywhere levels appear
+COMPLEXITY_ORDER = ["SIMPLE", "MODERATE", "COMPLEX", "VERY_COMPLEX"]
+
+METRIC_INFO = {
+    "Normalized Semantic Score": {
+        "short": "Semantic",
+        "help": (
+            "Measures how well the generated SQL matches the intent of the original "
+            "natural-language query. Computed by asking the model to explain the generated "
+            "SQL in natural language and comparing that explanation against the user's "
+            "original query."
+        ),
+    },
+    "Normalized Log Transformed Tokens": {
+        "short": "Token",
+        "help": "Measures token usage for the query run. Based on prompt and output token count.",
+    },
+    "Normalized Latency (s)": {
+        "short": "Latency",
+        "help": "Measures runtime / response latency for the query run.",
+    },
+    "Normalized Complexity Score": {
+        "short": "Complexity",
+        "help": (
+            "Measures structural complexity of the generated SQL. The complexity score is based "
+            "on SQL characteristics such as joins, subqueries, aggregations, conditions and other operations."
+        ),
+    },
+}
+
+
+# -------------------------
+# Helper: sort complexity levels in canonical order
+# -------------------------
+def _sort_complexity_levels(levels: list) -> list:
+    """
+    Sort a list of complexity level strings in canonical order:
+    SIMPLE → MODERATE → COMPLEX → VERY_COMPLEX.
+    Any unrecognised values are appended at the end in alphabetical order.
+    Case-insensitive matching.
+    """
+    upper_map = {str(l).strip().upper(): str(l).strip() for l in levels}
+    ordered = []
+    for canonical in COMPLEXITY_ORDER:
+        if canonical in upper_map:
+            ordered.append(upper_map[canonical])
+    # append anything not in canonical list
+    for orig in sorted(upper_map.values()):
+        if orig.upper() not in COMPLEXITY_ORDER:
+            ordered.append(orig)
+    return ordered
+
+
 # -------------------------
 # Filters
 # -------------------------
@@ -37,18 +90,39 @@ def compute_filters(df_full: pd.DataFrame):
 
     st.sidebar.header("Filters")
 
-    # Model filter
+    # --- Model filter ---
     models = sorted(df_scores["Model"].unique().tolist())
     selected_models = st.sidebar.multiselect("Models", models, default=models)
 
-    # Total score filter
+    # --- Total score slider ---
     lo, hi = float(df_scores[SCORE_COL].min()), float(df_scores[SCORE_COL].max())
     score_range = st.sidebar.slider("Total Score range", lo, hi, (lo, hi))
 
     # Base mask
     mask = df_scores["Model"].isin(selected_models) & df_scores[SCORE_COL].between(*score_range)
 
-    # Include prompt filter
+    # --- Complexity Level filter ---
+    if "Complexity Level" in df_scores.columns:
+        raw_levels = (
+            df_scores["Complexity Level"]
+            .dropna()
+            .astype(str)
+            .str.strip()
+            .unique()
+            .tolist()
+        )
+        levels_ordered = _sort_complexity_levels(raw_levels)
+
+        selected_levels = st.sidebar.multiselect(
+            "Complexity levels",
+            options=levels_ordered,
+            default=levels_ordered,
+        )
+
+        # Empty selection = show nothing (not everything)
+        mask = mask & df_scores["Complexity Level"].astype(str).str.strip().isin(selected_levels)
+
+    # --- Prompt include filter ---
     if "Prompt" in df_scores.columns:
         st.sidebar.subheader("Prompt Filter")
 
@@ -75,12 +149,12 @@ def compute_filters(df_full: pd.DataFrame):
         if selected_prompts:
             mask = mask & df_scores["Prompt"].astype(str).isin(selected_prompts)
 
-    # Exclude prompt filter
+    # --- Prompt exclude filter ---
     if "Prompt" in df_scores.columns:
         st.sidebar.subheader("Prompt Exclusion")
 
         excl_q = st.sidebar.text_input(
-            "Search for prompt by text to exclude",
+            "Search for prompt to exclude",
             value="",
             placeholder="type to search...",
         ).strip()
@@ -104,7 +178,7 @@ def compute_filters(df_full: pd.DataFrame):
     df_full_f = df_full.loc[df_scores.index[mask]].copy()
 
     if df_scores_f.empty:
-        st.warning("No rows match the current filters.")
+        st.warning("No rows match the current filters — try checking all the filters (models / scores / complexity levels).")
         st.stop()
 
     return df_full_f, df_scores_f
@@ -130,23 +204,49 @@ def render_summary_row(df_scores_f: pd.DataFrame):
     c1, c2, c3 = st.columns([1.4, 1.4, 1.0])
 
     with c1:
-        st.metric("Average Total Score", f"{avg_total:.3f}")
+        st.metric(
+            "Average Total Score",
+            f"{avg_total:.3f}",
+            help=(
+                "Average of the final calculated score across the currently selected queries. "
+                "Calculated Score = 60% Semantic + 20% Complexity + 10% Latency + 10% Token."
+            ),
+        )
         st.progress(_clamp01(avg_total), text="0–1 normalised")
 
     with c2:
-        st.metric("Median Total Score", f"{med_total:.3f}")
+        st.metric(
+            "Median Total Score",
+            f"{med_total:.3f}",
+            help=(
+                "Median of the final calculated score across the currently selected queries. "
+                "Calculated Score = 60% Semantic + 20% Complexity + 10% Latency + 10% Token."
+            ),
+        )
         st.progress(_clamp01(med_total), text="0–1 normalised")
 
     with c3:
-        st.metric("Total Number of Queries", runs)
-        st.metric("Total Number of Models", models)
+        st.metric("Total Number of Queries", runs, help="Number of query runs currently included.")
+        st.metric("Total Number of Models", models, help="Number of distinct models currently included.")
+
+
+def render_metric_name_row():
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        st.metric("Semantic", "", help=METRIC_INFO["Normalized Semantic Score"]["help"])
+    with c2:
+        st.metric("Latency", "", help=METRIC_INFO["Normalized Latency (s)"]["help"])
+    with c3:
+        st.metric("Token", "", help=METRIC_INFO["Normalized Log Transformed Tokens"]["help"])
+    with c4:
+        st.metric("Complexity", "", help=METRIC_INFO["Normalized Complexity Score"]["help"])
 
 
 # -------------------------
 # Aggregation helper
 # -------------------------
 def _agg_by_model(df_scores_f: pd.DataFrame) -> pd.DataFrame:
-    return (
+    agg = (
         df_scores_f.groupby("Model")
         .agg(
             runs=(SCORE_COL, "count"),
@@ -160,16 +260,16 @@ def _agg_by_model(df_scores_f: pd.DataFrame) -> pd.DataFrame:
         .reset_index()
         .sort_values("mean_total", ascending=False)
     )
+    return agg
 
 
 # -------------------------
 # Plotly helper: bar chart with labels
 # -------------------------
-def _bar_with_labels(df: pd.DataFrame, x: str, y: str, title: str, decimals: int = 3):
+def _bar_with_labels(df, x, y, title, decimals=3, hover_cols=None):
     d = df.copy()
     d["_label"] = d[y].round(decimals).astype(str)
-
-    fig = px.bar(d, x=x, y=y, text="_label", title=title)
+    fig = px.bar(d, x=x, y=y, text="_label", title=title, hover_data=hover_cols)
     fig.update_traces(textposition="outside", cliponaxis=False)
     fig.update_layout(
         yaxis_range=[0, 1],
@@ -181,7 +281,7 @@ def _bar_with_labels(df: pd.DataFrame, x: str, y: str, title: str, decimals: int
 
 
 # -------------------------
-# Deeper Analysis on Calculated Score dialog
+# Deeper Analysis dialog
 # -------------------------
 @st.dialog("Deeper Analysis on Calculated Score", width="large")
 def _whatif_dialog(df_scores_f: pd.DataFrame):
@@ -195,13 +295,17 @@ def _whatif_dialog(df_scores_f: pd.DataFrame):
 
         c1, c2, c3, c4 = st.columns(4)
         with c1:
-            w_semantic = st.slider("Semantic %", 0, 100, 60, step=5, key="ws_semantic")
+            w_semantic = st.slider("Semantic %", 0, 100, 60, step=5, key="ws_semantic",
+                                   help=METRIC_INFO["Normalized Semantic Score"]["help"])
         with c2:
-            w_complexity = st.slider("Complexity %", 0, 100, 20, step=5, key="ws_complexity")
+            w_complexity = st.slider("Complexity %", 0, 100, 20, step=5, key="ws_complexity",
+                                     help=METRIC_INFO["Normalized Complexity Score"]["help"])
         with c3:
-            w_latency = st.slider("Latency %", 0, 100, 10, step=5, key="ws_latency")
+            w_latency = st.slider("Latency %", 0, 100, 10, step=5, key="ws_latency",
+                                  help=METRIC_INFO["Normalized Latency (s)"]["help"])
         with c4:
-            w_token = st.slider("Token %", 0, 100, 10, step=5, key="ws_token")
+            w_token = st.slider("Token %", 0, 100, 10, step=5, key="ws_token",
+                                help=METRIC_INFO["Normalized Log Transformed Tokens"]["help"])
 
         total = w_semantic + w_complexity + w_latency + w_token
         if total != 100:
@@ -220,38 +324,29 @@ def _whatif_dialog(df_scores_f: pd.DataFrame):
 
             agg_sim = (
                 df_sim.groupby("Model")
-                .agg(
-                    mean_simulated=("Simulated Score", "mean"),
-                    mean_original=(SCORE_COL, "mean"),
-                )
+                .agg(mean_simulated=("Simulated Score", "mean"), mean_original=(SCORE_COL, "mean"))
                 .reset_index()
                 .sort_values("mean_simulated", ascending=False)
             )
             agg_sim["_label"] = agg_sim["mean_simulated"].round(3).astype(str)
 
-            fig = px.bar(
-                agg_sim, x="Model", y="mean_simulated", text="_label",
-                title="Simulated Mean Score by Model",
-                color_discrete_sequence=["#636EFA"],
-            )
+            fig = px.bar(agg_sim, x="Model", y="mean_simulated", text="_label",
+                         title="Simulated Mean Score by Model")
             fig.update_traces(textposition="outside", cliponaxis=False)
             fig.update_layout(yaxis_range=[0, 1], margin=dict(l=10, r=10, t=60, b=10))
             st.plotly_chart(fig, use_container_width=True)
 
-            # Rank change table
             orig_rank = (
                 agg_sim.sort_values("mean_original", ascending=False)
                 .reset_index(drop=True).reset_index()
-                .rename(columns={"index": "original_rank"})
-                [["Model", "original_rank", "mean_original"]]
+                .rename(columns={"index": "original_rank"})[["Model", "original_rank", "mean_original"]]
             )
             orig_rank["original_rank"] += 1
 
             sim_rank = (
                 agg_sim.sort_values("mean_simulated", ascending=False)
                 .reset_index(drop=True).reset_index()
-                .rename(columns={"index": "simulated_rank"})
-                [["Model", "simulated_rank", "mean_simulated"]]
+                .rename(columns={"index": "simulated_rank"})[["Model", "simulated_rank", "mean_simulated"]]
             )
             sim_rank["simulated_rank"] += 1
 
@@ -279,20 +374,22 @@ def _whatif_dialog(df_scores_f: pd.DataFrame):
     # TAB 2: Score Calculator
     # ----------------------------------------------------------------
     with tab2:
-        st.markdown(
-            "Enter hypothetical metric values (0–1) and weights to compute what a model's score would be."
-        )
+        st.markdown("Enter hypothetical metric values (0–1) and weights to compute what a model's score would be.")
 
         st.markdown("**Weights**")
         wc1, wc2, wc3, wc4 = st.columns(4)
         with wc1:
-            cw_semantic = st.slider("Semantic %", 0, 100, 60, step=5, key="calc_w_semantic")
+            cw_semantic = st.slider("Semantic %", 0, 100, 60, step=5, key="calc_w_semantic",
+                                    help=METRIC_INFO["Normalized Semantic Score"]["help"])
         with wc2:
-            cw_complexity = st.slider("Complexity %", 0, 100, 20, step=5, key="calc_w_complexity")
+            cw_complexity = st.slider("Complexity %", 0, 100, 20, step=5, key="calc_w_complexity",
+                                      help=METRIC_INFO["Normalized Complexity Score"]["help"])
         with wc3:
-            cw_latency = st.slider("Latency %", 0, 100, 10, step=5, key="calc_w_latency")
+            cw_latency = st.slider("Latency %", 0, 100, 10, step=5, key="calc_w_latency",
+                                   help=METRIC_INFO["Normalized Latency (s)"]["help"])
         with wc4:
-            cw_token = st.slider("Token %", 0, 100, 10, step=5, key="calc_w_token")
+            cw_token = st.slider("Token %", 0, 100, 10, step=5, key="calc_w_token",
+                                 help=METRIC_INFO["Normalized Log Transformed Tokens"]["help"])
 
         calc_total = cw_semantic + cw_complexity + cw_latency + cw_token
         if calc_total != 100:
@@ -303,13 +400,17 @@ def _whatif_dialog(df_scores_f: pd.DataFrame):
         st.markdown("**Metric Values**")
         vc1, vc2, vc3, vc4 = st.columns(4)
         with vc1:
-            v_semantic = st.number_input("Semantic Score", 0.0, 1.0, 0.80, step=0.01, key="calc_v_semantic")
+            v_semantic = st.number_input("Semantic Score", 0.0, 1.0, 0.80, step=0.01, key="calc_v_semantic",
+                                         help=METRIC_INFO["Normalized Semantic Score"]["help"])
         with vc2:
-            v_complexity = st.number_input("Complexity Score", 0.0, 1.0, 0.75, step=0.01, key="calc_v_complexity")
+            v_complexity = st.number_input("Complexity Score", 0.0, 1.0, 0.75, step=0.01, key="calc_v_complexity",
+                                           help=METRIC_INFO["Normalized Complexity Score"]["help"])
         with vc3:
-            v_latency = st.number_input("Latency Score", 0.0, 1.0, 0.70, step=0.01, key="calc_v_latency")
+            v_latency = st.number_input("Latency Score", 0.0, 1.0, 0.70, step=0.01, key="calc_v_latency",
+                                        help=METRIC_INFO["Normalized Latency (s)"]["help"])
         with vc4:
-            v_token = st.number_input("Token Score", 0.0, 1.0, 0.65, step=0.01, key="calc_v_token")
+            v_token = st.number_input("Token Score", 0.0, 1.0, 0.65, step=0.01, key="calc_v_token",
+                                      help=METRIC_INFO["Normalized Log Transformed Tokens"]["help"])
 
         calculated = (
             v_semantic * cw_semantic / 100
@@ -323,12 +424,12 @@ def _whatif_dialog(df_scores_f: pd.DataFrame):
         res_col, _ = st.columns([1, 2])
         with res_col:
             st.metric(
-                label=f"Calculated Score",
+                label="Calculated Score",
                 value=f"{calculated:.4f}",
+                help="Weighted sum of all four metrics. All inputs expected on a 0–1 scale.",
             )
             st.progress(_clamp01(calculated))
 
-        # Breakdown bar
         breakdown = pd.DataFrame({
             "Metric": ["Semantic", "Complexity", "Latency", "Token"],
             "Contribution": [
@@ -336,23 +437,18 @@ def _whatif_dialog(df_scores_f: pd.DataFrame):
                 v_complexity * cw_complexity / 100,
                 v_latency * cw_latency / 100,
                 v_token * cw_token / 100,
-            ]
+            ],
         })
-        fig_b = px.bar(
-            breakdown, x="Metric", y="Contribution",
-            title="Score Contribution by Metric",
-            text=breakdown["Contribution"].round(4).astype(str),
-            color="Metric",
-        )
+        fig_b = px.bar(breakdown, x="Metric", y="Contribution",
+                       title="Score Contribution by Metric",
+                       text=breakdown["Contribution"].round(4).astype(str),
+                       color="Metric")
         fig_b.update_traces(textposition="outside", cliponaxis=False)
-        fig_b.update_layout(
-            yaxis_range=[0, 1], showlegend=False,
-            margin=dict(l=10, r=10, t=40, b=10)
-        )
+        fig_b.update_layout(yaxis_range=[0, 1], showlegend=False, margin=dict(l=10, r=10, t=40, b=10))
         st.plotly_chart(fig_b, use_container_width=True)
 
     # ----------------------------------------------------------------
-    # TAB 3: Scatterplot
+    # TAB 3: Metric Correlation
     # ----------------------------------------------------------------
     with tab3:
         st.markdown(
@@ -374,47 +470,37 @@ def _whatif_dialog(df_scores_f: pd.DataFrame):
         )
         selected_metric_col = metric_options[selected_metric_label]
 
+        hover_cols = ["Model"]
+        if "Prompt" in df_scores_f.columns:
+            hover_cols.append("Prompt")
+
         try:
             fig_scatter = px.scatter(
-                df_scores_f,
-                x=selected_metric_col,
-                y=SCORE_COL,
-                color="Model",
-                hover_data=["Prompt"] if "Prompt" in df_scores_f.columns else None,
+                df_scores_f, x=selected_metric_col, y=SCORE_COL,
+                color="Model", hover_data=hover_cols,
                 title=f"{selected_metric_label} vs Calculated Score",
-                trendline="ols",
-                trendline_scope="overall",
+                trendline="ols", trendline_scope="overall",
             )
         except Exception:
             fig_scatter = px.scatter(
-                df_scores_f,
-                x=selected_metric_col,
-                y=SCORE_COL,
-                color="Model",
-                hover_data=["Prompt"] if "Prompt" in df_scores_f.columns else None,
+                df_scores_f, x=selected_metric_col, y=SCORE_COL,
+                color="Model", hover_data=hover_cols,
                 title=f"{selected_metric_label} vs Calculated Score",
             )
             st.caption("Install `statsmodels` to show a trendline: `pip install statsmodels`")
-        fig_scatter.update_layout(
-            xaxis_range=[0, 1],
-            yaxis_range=[0, 1],
-            margin=dict(l=10, r=10, t=60, b=10),
-        )
+
+        fig_scatter.update_layout(xaxis_range=[0, 1], yaxis_range=[0, 1],
+                                  margin=dict(l=10, r=10, t=60, b=10))
         fig_scatter.update_traces(marker=dict(size=7, opacity=0.7))
         st.plotly_chart(fig_scatter, use_container_width=True)
 
-        # correlation value
         corr = df_scores_f[[selected_metric_col, SCORE_COL]].dropna().corr().iloc[0, 1]
         st.metric(
             label=f"Pearson Correlation: {selected_metric_label} vs Calculated Score",
             value=f"{corr:.3f}",
             help="1.0 = perfect positive correlation, 0 = no correlation, -1.0 = perfect negative correlation",
         )
-
-        st.caption(
-            "Trendline is fitted across all models combined. "
-            "Hover over points to see individual prompt details."
-        )
+        st.caption("Trendline fitted across all models combined. Hover over points to see prompt details.")
 
 
 # -------------------------
@@ -427,18 +513,18 @@ def render_tab_summary(df_scores_f: pd.DataFrame):
         "**60% Accuracy** (Semantic Score), **20% Complexity**, **10% Latency**, **10% Token**."
     )
 
+    render_metric_name_row()
+
     if st.button("Deeper Analysis on Calculated Score", key="open_whatif"):
         _whatif_dialog(df_scores_f)
 
     agg = _agg_by_model(df_scores_f)
 
     left, right = st.columns(2)
-
     with left:
-        _bar_with_labels(agg, x="Model", y="mean_total", title="Mean Total Score by Model")
-
+        _bar_with_labels(agg, x="Model", y="mean_total", title="Mean Total Score by Model", hover_cols=["runs"])
     with right:
-        _bar_with_labels(agg, x="Model", y="median_total", title="Median Total Score by Model")
+        _bar_with_labels(agg, x="Model", y="median_total", title="Median Total Score by Model", hover_cols=["runs"])
 
     st.markdown("**Table View**")
     st.dataframe(
@@ -462,59 +548,27 @@ def render_tab_efficiency(df_scores_f: pd.DataFrame):
     agg = _agg_by_model(df_scores_f)
 
     c1, c2, c3 = st.columns(3)
-
     with c1:
-        _bar_with_labels(agg, x="Model", y="mean_latency", title="Mean Norm Latency by Model")
-
+        _bar_with_labels(agg, x="Model", y="mean_latency", title="Mean Norm Latency by Model", hover_cols=["runs"])
     with c2:
-        _bar_with_labels(agg, x="Model", y="mean_token", title="Mean Norm Token by Model")
-
+        _bar_with_labels(agg, x="Model", y="mean_token", title="Mean Norm Token by Model", hover_cols=["runs"])
     with c3:
-        _bar_with_labels(agg, x="Model", y="mean_complexity", title="Mean Norm Complexity by Model")
+        _bar_with_labels(agg, x="Model", y="mean_complexity", title="Mean Norm Complexity by Model", hover_cols=["runs"])
 
     st.markdown("**Efficiency Profile**")
     prof = agg.set_index("Model")[["mean_latency", "mean_token", "mean_complexity"]].copy()
     prof.columns = ["Latency", "Token", "Complexity"]
     prof_long = prof.reset_index().melt(id_vars="Model", var_name="Metric", value_name="Score")
 
-    fig = px.line(prof_long, x="Metric", y="Score", color="Model", markers=True, title="Efficiency Profile")
+    fig = px.line(prof_long, x="Metric", y="Score", color="Model", markers=True,
+                  title="Efficiency Profile", hover_data=["Model", "Metric", "Score"])
     fig.update_layout(yaxis_range=[0, 1], margin=dict(l=10, r=10, t=40, b=10))
     st.plotly_chart(fig, use_container_width=True)
 
 
 # -------------------------
-# TAB 3: ACCURACY (Semantic only)
+# TAB 3: ACCURACY
 # -------------------------
-def _order_complexity_levels(levels):
-    norm = [str(x).strip() for x in levels if pd.notna(x)]
-    unique = list(dict.fromkeys(norm))
-
-    canonical_orders = [
-        ["low", "medium", "high"],
-        ["easy", "medium", "hard"],
-        ["simple", "moderate", "complex"],
-        ["l1", "l2", "l3"],
-    ]
-
-    lower_map = {u: u.lower() for u in unique}
-    lower_unique = [lower_map[u] for u in unique]
-
-    for order in canonical_orders:
-        if all(any(o == lu for lu in lower_unique) for o in order):
-            out = []
-            for o in order:
-                for orig in unique:
-                    if lower_map[orig] == o:
-                        out.append(orig)
-                        break
-            for orig in unique:
-                if orig not in out:
-                    out.append(orig)
-            return out
-
-    return sorted(unique)
-
-
 def render_tab_accuracy(df_scores_f: pd.DataFrame):
     st.subheader("Accuracy")
     st.markdown(
@@ -522,12 +576,13 @@ def render_tab_accuracy(df_scores_f: pd.DataFrame):
     )
 
     agg = _agg_by_model(df_scores_f)
-    _bar_with_labels(agg, x="Model", y="mean_semantic", title="Mean Normalized Semantic Score by Model")
+    _bar_with_labels(agg, x="Model", y="mean_semantic",
+                     title="Mean Normalized Semantic Score by Model", hover_cols=["runs"])
 
     st.divider()
 
     if "Complexity Level" not in df_scores_f.columns:
-        st.info("No 'Complexity Level' column found in the Excel, so complexity drilldown is hidden.")
+        st.info("No 'Complexity Level' column found — complexity drilldown is hidden.")
         return
 
     tmp = df_scores_f[["Model", "Complexity Level", "Normalized Semantic Score"]].copy()
@@ -535,10 +590,11 @@ def render_tab_accuracy(df_scores_f: pd.DataFrame):
     tmp = tmp[tmp["Complexity Level"].notna() & (tmp["Complexity Level"] != "")]
 
     if tmp.empty:
-        st.info("Complexity Level exists, but no usable values found after filtering.")
+        st.info("Complexity Level exists but no usable values found after filtering.")
         return
 
-    levels_ordered = _order_complexity_levels(tmp["Complexity Level"].unique().tolist())
+    # Use canonical ordering
+    levels_ordered = _sort_complexity_levels(tmp["Complexity Level"].unique().tolist())
     tmp["Complexity Level"] = pd.Categorical(tmp["Complexity Level"], categories=levels_ordered, ordered=True)
 
     mode = st.radio(
@@ -546,6 +602,10 @@ def render_tab_accuracy(df_scores_f: pd.DataFrame):
         ["Overall with all selected models combined", "Per model"],
         horizontal=True,
         index=0,
+        help=(
+            "Shows how semantic alignment varies across query complexity groupings. "
+            "Uses the 'Complexity Level' values in your dataset."
+        ),
     )
 
     if mode.startswith("Overall"):
@@ -556,14 +616,9 @@ def render_tab_accuracy(df_scores_f: pd.DataFrame):
         )
         by_lvl["_label"] = by_lvl["mean_semantic"].round(3).astype(str)
 
-        fig = px.line(
-            by_lvl,
-            x="Complexity Level",
-            y="mean_semantic",
-            markers=True,
-            text="_label",
-            title="Mean Normalized Semantic Score vs Complexity Level (Overall)",
-        )
+        fig = px.line(by_lvl, x="Complexity Level", y="mean_semantic", markers=True,
+                      text="_label", title="Mean Normalized Semantic Score vs Complexity Level (Overall)",
+                      hover_data=["n"])
         fig.update_traces(textposition="top center")
         fig.update_layout(yaxis_range=[0, 1], margin=dict(l=10, r=10, t=40, b=10))
         st.plotly_chart(fig, use_container_width=True)
@@ -573,66 +628,88 @@ def render_tab_accuracy(df_scores_f: pd.DataFrame):
             tmp.groupby(["Model", "Complexity Level"], as_index=False, observed=True)
             .agg(mean_semantic=("Normalized Semantic Score", "mean"))
         )
-
         by_model_lvl["Complexity Level"] = by_model_lvl["Complexity Level"].astype(str)
-
         order_map = {lvl: i for i, lvl in enumerate(levels_ordered)}
         by_model_lvl["_order"] = by_model_lvl["Complexity Level"].map(order_map).fillna(10**9)
         by_model_lvl = by_model_lvl.sort_values(["_order", "Model"]).drop(columns=["_order"])
 
-        fig = px.line(
-            by_model_lvl,
-            x="Complexity Level",
-            y="mean_semantic",
-            color="Model",
-            markers=True,
-            title="Normalized Semantic Score across Complexity Level (per model)",
-            category_orders={"Complexity Level": levels_ordered},
-        )
+        fig = px.line(by_model_lvl, x="Complexity Level", y="mean_semantic", color="Model",
+                      markers=True, title="Normalized Semantic Score across Complexity Level (per model)",
+                      category_orders={"Complexity Level": levels_ordered},
+                      hover_data=["Model", "mean_semantic"])
         fig.update_layout(yaxis_range=[0, 1], margin=dict(l=10, r=10, t=40, b=10))
         st.plotly_chart(fig, use_container_width=True)
 
 
 # -------------------------
-# Raw data section with checkboxes at bottom, instant update via st.rerun()
+# Raw data section with checkboxes, instant update via st.rerun()
 # -------------------------
 def render_raw_data_section(df_full_f: pd.DataFrame) -> pd.Index:
-    # Initialise excluded set in session state
     if "excluded_idx" not in st.session_state:
         st.session_state["excluded_idx"] = set()
 
-    # Clear out any excluded indices that no longer exist in the current filter
+    # Clear stale exclusions when filters change
     st.session_state["excluded_idx"] &= set(df_full_f.index.tolist())
 
     with st.expander("Raw data (All Columns) — uncheck rows to exclude from dashboard", expanded=False):
         df_raw = df_full_f.copy().reset_index(drop=False)
         df_raw = df_raw.rename(columns={"index": "_orig_idx"})
 
-        # Set Include column based on session state
+        # Drop Gold SQL if present (not useful in UI)
+        drop_candidates = ["Gold SQL", "gold sql", "Gold_SQL", "gold_sql"]
+        df_raw = df_raw.drop(columns=[c for c in drop_candidates if c in df_raw.columns])
+
         df_raw.insert(0, "Include", ~df_raw["_orig_idx"].isin(st.session_state["excluded_idx"]))
 
-        cols = ["Include"] + [c for c in df_raw.columns if c not in ("Include", "_orig_idx")]
-        df_display = df_raw[cols + ["_orig_idx"]].copy()
+        # Column ordering: Include → Complexity Level → rest (no _orig_idx)
+        ordered_cols = ["Include"]
+        if "Complexity Level" in df_raw.columns:
+            ordered_cols.append("Complexity Level")
+        ordered_cols += [c for c in df_raw.columns if c not in ("Include", "Complexity Level", "_orig_idx")]
+
+        df_display = df_raw[ordered_cols + ["_orig_idx"]].copy()
+
+        # Sort Complexity Level column categorically if present
+        if "Complexity Level" in df_display.columns:
+            raw_levels = df_display["Complexity Level"].dropna().astype(str).str.strip().unique().tolist()
+            levels_ordered = _sort_complexity_levels(raw_levels)
+            df_display["Complexity Level"] = pd.Categorical(
+                df_display["Complexity Level"].astype(str).str.strip(),
+                categories=levels_ordered,
+                ordered=True,
+            )
+
+        column_config = {
+            "Include": st.column_config.CheckboxColumn(
+                "Include",
+                help="Untick to exclude this row from the dashboard",
+                default=True,
+            ),
+        }
+
+        numeric_col_config = {
+            "Normalized Semantic Score": METRIC_INFO["Normalized Semantic Score"]["help"],
+            "Normalized Latency (s)": METRIC_INFO["Normalized Latency (s)"]["help"],
+            "Normalized Log Transformed Tokens": METRIC_INFO["Normalized Log Transformed Tokens"]["help"],
+            "Normalized Complexity Score": METRIC_INFO["Normalized Complexity Score"]["help"],
+            SCORE_COL: "Final weighted score used for model comparison.",
+        }
+        for col, help_text in numeric_col_config.items():
+            if col in df_display.columns:
+                column_config[col] = st.column_config.NumberColumn(col, help=help_text, format="%.3f")
 
         edited = st.data_editor(
             df_display,
             use_container_width=True,
             hide_index=True,
-            column_config={
-                "Include": st.column_config.CheckboxColumn(
-                    "Include",
-                    help="Untick to exclude this row from the dashboard",
-                    default=True,
-                )
-            },
+            column_config=column_config,
             disabled=[c for c in df_display.columns if c != "Include"],
-            column_order=cols,
+            column_order=ordered_cols,
             key="raw_data_editor",
         )
 
         new_excluded = set(edited.loc[~edited["Include"], "_orig_idx"].tolist())
 
-        # If checkbox state changed, update session state and rerun immediately
         if new_excluded != st.session_state["excluded_idx"]:
             st.session_state["excluded_idx"] = new_excluded
             st.rerun()
