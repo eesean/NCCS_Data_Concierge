@@ -22,10 +22,10 @@ DATA_DIR = Path(__file__).parents[3] / "data"
 
 PARQUETS: Dict[str, Path] = {
     "person": DATA_DIR / "person.parquet",
-    "condition_occurrence": DATA_DIR / "condition_occurrence.parquet",
+    "condition_occurrence": DATA_DIR / "user_fre_condition_occurence.parquet",
     "procedure_occurrence": DATA_DIR / "procedure_occurrence.parquet",
-    "drug_exposure_cancerdrugs": DATA_DIR / "drug_exposure_cancerdrugs.parquet",
-    "measurement_mutation": DATA_DIR / "measurement_mutation.parquet",
+    "drug_exposure_cancerdrugs": DATA_DIR / "user_fre_drug_exposure.parquet",
+    "measurement_mutation": DATA_DIR / "user_fre_measurement.parquet",
     "death": DATA_DIR / "death.parquet",
 }
 
