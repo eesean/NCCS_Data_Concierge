@@ -100,8 +100,14 @@ _SQL_GEN_PROMPT = (
     "Now generate the DuckDB SQL query to answer the question above.\n"
     "Rules:\n"
     "- Return ONLY the raw SQL statement — no explanation, no markdown, no code fences.\n"
-    "- Use ONLY columns and tables from the schema.\n"
-    "- For cancer queries, copy the SQL_FILTER from get_cancer_info verbatim — never use ICDO3.\n"
+    "- Use ONLY column and table names that appear VERBATIM in the schema above. Do NOT invent column names.\n"
+    "- CRITICAL — this dataset uses custom column names, NOT standard OMOP names. Common mappings:\n"
+    "    • ICD-10 / diagnosis code  →  use \"Diag Code\"     (NOT icd10, icdo3, condition_concept_id, condition_source_value)\n"
+    "    • Diagnosis date           →  use \"Diag Date\"     (NOT condition_start_date, condition_start_datetime)\n"
+    "    • Diagnosis description    →  use \"Diagnosis\"     (NOT condition_name, condition_source_concept_id)\n"
+    "    • Histology description    →  use \"Histo Desc\"    (NOT histology_name, histology_source_value)\n"
+    "- Column names that contain spaces MUST be double-quoted: e.g. \"Diag Code\", \"Diag Date\", \"Histo Desc\".\n"
+    "- For cancer queries, copy the SQL_FILTER from get_cancer_info verbatim into the WHERE clause — never invent codes.\n"
     "- Use DuckDB-compatible syntax only.\n"
 )
 
@@ -327,12 +333,23 @@ def stream_question_agent(
                 break
 
             # Validation failed — ask LLM to fix and loop again
+            column_hint = ""
+            if "DISALLOWED_COLUMNS" in last_validation:
+                column_hint = (
+                    "\n\nIMPORTANT — replace any invalid column names with the correct ones from the schema:\n"
+                    "  icd10 / icdo3 / condition_source_value  →  \"Diag Code\"\n"
+                    "  condition_start_date / condition_start_datetime  →  \"Diag Date\"\n"
+                    "  condition_name / condition_source_concept_id  →  \"Diagnosis\"\n"
+                    "  histology_name / histology_source_value  →  \"Histo Desc\"\n"
+                    "  year / diag_year  →  YEAR(\"Diag Date\")\n"
+                    "Only use column names that appear verbatim in the database schema provided."
+                )
             gen_messages.append({
                 "role": "user",
                 "content": (
                     f"The SQL failed validation:\n{last_validation}\n\n"
                     f"Current SQL:\n{sql}\n\n"
-                    "Fix the SQL so it passes validation. "
+                    f"Fix the SQL so it passes validation.{column_hint}\n"
                     "Return ONLY the corrected SQL statement, no explanation."
                 ),
             })

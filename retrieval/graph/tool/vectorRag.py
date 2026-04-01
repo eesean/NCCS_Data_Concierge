@@ -2,14 +2,13 @@ import os
 from langchain_community.vectorstores import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 
-CHROMA_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "chroma_db")
+CHROMA_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "new_chroma_db")
 
 # Lazily initialised — populated on first use to avoid slow startup
 _embeddings = None
 _vectorstore = None
 _cancer_vectorstore = None
 _sql_template_vectorstore = None
-
 
 def _get_embeddings():
     global _embeddings

@@ -316,7 +316,14 @@ def _get_connection() -> duckdb.DuckDBPyConnection:
     global _con
     if _con is None:
         _con = connect_duckdb()
-        load_parquet_views(_con, PARQUETS)
+        try:
+            load_parquet_views(_con, PARQUETS)
+        except Exception as e:
+            _con = None  # reset so next call retries rather than using a broken connection
+            raise RuntimeError(
+                f"Failed to load parquet views — check PARQUET_KEY_NAME and PARQUET_KEY_VALUE in .env.\n"
+                f"Underlying error: {e}"
+            )
     return _con
 
 
