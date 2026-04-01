@@ -55,20 +55,40 @@ def evaluate_live_query(prompt: str, model: str, generated_sql: str, latency: fl
             print(f"Dynamic Eval Error: {str(e)}")
             row_data["Error Message"] += f" | Eval Error: {str(e)}"
 
-    # 3. Append to CSV (Create if it doesn't exist)
-    csv_path = "live_query_logs.csv"
-    df = pd.DataFrame([row_data])
-    df["Log Transformed Tokens"] = df["Total Tokens"].apply(lambda x: round(math.log(x + 1), 3)) # Log transform for better scaling
-    columns_to_normalize = ["Latency (s)", "Complexity Score", "Log Transformed Tokens", "Semantic Score"]
-    for column in columns_to_normalize:
-        df[f"Normalized {column}"] = normalize_score(column, df)
-    df["Efficiency Score"] = 0.6 * df["Normalized Semantic Score"] + 0.1 * df["Normalized Latency (s)"] + 0.1 * df["Normalized Log Transformed Tokens"] + 0.2 * df["Normalized Complexity Score"]
-
-    # If file doesn't exist, write headers. Otherwise, append without headers.
-    if not os.path.isfile(csv_path):
-        df.to_csv(csv_path, index=False)
+    # 3. Handle the CSV (Load existing -> Append new -> Recalculate -> Save)
+    csv_path = "eval_files/live_query_logs.csv"
+    
+    # Create the new row as a DataFrame
+    new_row_df = pd.DataFrame([row_data])
+    
+    # Load existing data if it exists
+    if os.path.exists(csv_path):
+        existing_df = pd.read_csv(csv_path)
+        # Combine old and new
+        full_df = pd.concat([existing_df, new_row_df], ignore_index=True)
     else:
-        df.to_csv(csv_path, mode='a', header=False, index=False)
+        full_df = new_row_df
+
+    # 4. Perform Global Calculations on the WHOLE dataset
+    # We apply the log transform to every row to ensure consistency
+    full_df["Log Transformed Tokens"] = full_df["Total Tokens"].apply(lambda x: round(math.log(x + 1), 3))
+    
+    columns_to_normalize = ["Latency (s)", "Complexity Score", "Log Transformed Tokens", "Semantic Score"]
+    
+    for column in columns_to_normalize:
+        # Now normalize_score sees the ENTIRE history, not just one row
+        full_df[f"Normalized {column}"] = normalize_score(column, full_df)
+    
+    # Recalculate Efficiency Score for everyone based on new normalization
+    full_df["Efficiency Score"] = (
+        0.6 * full_df["Normalized Semantic Score"] + 
+        0.1 * full_df["Normalized Latency (s)"] + 
+        0.1 * full_df["Normalized Log Transformed Tokens"] + 
+        0.2 * full_df["Normalized Complexity Score"]
+    )
+
+    # 5. Overwrite the file (No append mode here, we want the fresh calculations)
+    full_df.to_csv(csv_path, index=False)
 
     return row_data
 

@@ -6,7 +6,7 @@ Fixed execution order:
   2. get_sql_template    — hardcoded, always runs first
   3. get_cancer_info     — LLM-decided (offered as a tool; LLM calls it if relevant)
   4. LLM: generate SQL   — LLM generates SQL from all accumulated context
-  5. validate_sql_query  — hardcoded loop until SQL passes (max 3 tries)
+  5. validate_sql_query  — loop until SQL passes (LLM fixes; safety cap 10)
   6. get_data            — hardcoded, always runs after validation passes
   7. LLM: summarise results
 """
@@ -259,7 +259,7 @@ def stream_question_agent(
     # Mini tool-calling loop — only get_cancer_info is offered
     try:
         for _ in range(3):
-            resp = ollama_chat(gen_messages, tools=_CANCER_INFO_TOOL)
+            resp = ollama_chat(gen_messages, tools=_CANCER_INFO_TOOL, model=model)
             assistant_msg = resp["message"]
             if hasattr(assistant_msg, "__dict__"):
                 assistant_msg = dict(assistant_msg)
@@ -299,7 +299,7 @@ def stream_question_agent(
     # ------------------------------------------------------------------
     try:
         gen_messages.append({"role": "user", "content": _SQL_GEN_PROMPT})
-        resp = ollama_chat(gen_messages)   # no tools — pure SQL generation
+        resp = ollama_chat(gen_messages, model=model)  # no tools — pure SQL generation
         raw = resp["message"].get("content") or ""
         input_tokens += resp.get("prompt_eval_count", 0) or 0
         output_tokens += resp.get("eval_count", 0) or 0
@@ -336,7 +336,7 @@ def stream_question_agent(
                     "Return ONLY the corrected SQL statement, no explanation."
                 ),
             })
-            resp = ollama_chat(gen_messages)
+            resp = ollama_chat(gen_messages, model=model)
             raw = resp["message"].get("content") or ""
             input_tokens += resp.get("prompt_eval_count", 0) or 0
             output_tokens += resp.get("eval_count", 0) or 0
@@ -349,7 +349,7 @@ def stream_question_agent(
             return
 
     if not validated:
-        yield sse({
+        final_error = {
             "type": "done",
             "status": "error",
             "message": f"Could not generate a valid SQL query after {validation_tries} attempts.",
@@ -362,7 +362,26 @@ def stream_question_agent(
             "cost": 0.0,
             "prompt_cost": 0.0,
             "completion_cost": 0.0,
-        })
+        }
+
+        try:
+            eval_row = evaluate_live_query(
+                prompt=question,
+                model=model or OLLAMA_MODEL,
+                generated_sql=sql,
+                latency=time.perf_counter() - start_time,
+                metrics=final_error,
+            )
+            final_error.update({
+                "complexity_score": eval_row.get("Complexity Score"),
+                "complexity_level": eval_row.get("Complexity Level"),
+                "semantic_score": eval_row.get("Semantic Score"),
+                "generated_explanation": eval_row.get("Generated Explanation"),
+            })
+        except Exception as log_err:
+            print(f"[eval] Failed to log invalid query: {log_err}")
+
+        yield sse(final_error)
         return
 
     # ------------------------------------------------------------------
@@ -384,7 +403,7 @@ def stream_question_agent(
         summary_resp = ollama_chat([
             {"role": "system", "content": _SUMMARY_SYSTEM},
             {"role": "user", "content": f"Question: {question}\n\nData:\n{data_result[:3000]}"},
-        ])
+        ], model=model)
         final_text = summary_resp["message"].get("content") or ""
         input_tokens += summary_resp.get("prompt_eval_count", 0) or 0
         output_tokens += summary_resp.get("eval_count", 0) or 0
@@ -410,13 +429,20 @@ def stream_question_agent(
     })
 
     try:
-        evaluate_live_query(
+        eval_row = evaluate_live_query(
             prompt=question,
             model=model or OLLAMA_MODEL,
             generated_sql=sql,
             latency=latency,
             metrics=final,
         )
+
+        final.update({
+            "complexity_score": eval_row.get("Complexity Score"),
+            "complexity_level": eval_row.get("Complexity Level"),
+            "semantic_score": eval_row.get("Semantic Score"),
+            "generated_explanation": eval_row.get("Generated Explanation"),
+        })
     except Exception as log_err:
         print(f"[eval] Failed to log query: {log_err}")
 

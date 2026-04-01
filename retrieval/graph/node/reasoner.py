@@ -137,10 +137,10 @@ TOOL_FN_MAP = {
 # Agent loop
 # ---------------------------------------------------------------------------
 
-def run_agent(messages: list, max_iterations: int = 10) -> list:
+def run_agent(messages: list, max_iterations: int = 10, model: str = None) -> list:
     """Run the Ollama native tool-calling loop; return the full message history."""
     for iteration in range(max_iterations):
-        response = ollama_chat(messages, tools=TOOLS)
+        response = ollama_chat(messages, tools=TOOLS, model=model)
         assistant_msg = response["message"]
 
         # Ollama returns a Message object — convert to plain dict for uniform handling

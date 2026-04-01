@@ -17,12 +17,55 @@ st.markdown(
         border: 1px solid #9aa0a6 !important;
         -webkit-text-fill-color: #1f2937 !important;
     }
+
+    .complexity-pill {
+        display: inline-block;
+        padding: 8px 14px;
+        border-radius: 999px;
+        font-weight: 700;
+        font-size: 1rem;
+        line-height: 1.2;
+        margin: 10px 0 14px 0;
+        border: 1px solid transparent;
+    }
+
+    .complexity-simple {
+        background: #e8f5e9;
+        color: #1b5e20;
+        border-color: #a5d6a7;
+    }
+
+    .complexity-moderate {
+        background: #fff8e1;
+        color: #8d6e00;
+        border-color: #ffe082;
+    }
+
+    .complexity-complex {
+        background: #fff3e0;
+        color: #e65100;
+        border-color: #ffcc80;
+    }
+
+    .complexity-very-complex {
+        background: #ffebee;
+        color: #b71c1c;
+        border-color: #ef9a9a;
+    }
+
+    .complexity-unknown {
+        background: #f3f4f6;
+        color: #374151;
+        border-color: #d1d5db;
+    }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-## session state init
+# -------------------------
+# Session state init
+# -------------------------
 if "messages" not in st.session_state:
     st.session_state.messages = []
 if "processing" not in st.session_state:
@@ -37,14 +80,18 @@ SAMPLE_TEMPLATES = [
 ## sidebar
 _MODEL_OPTIONS = [
     "qwen2.5:7b",
+    "qwen2.5-coder:7b",
     "qwen3:8b",
+    "qwen3.5:0.8b",
     "deepseek-v3",
     "llama3.1",
 ]
 
 _MODEL_DESCRIPTIONS = {
     "qwen2.5:7b": "Lightweight and fast. Good for straightforward queries like counts and filters.",
+    "qwen2.5-coder:7b": "Code-oriented variant; good for structured SQL-style output.",
     "qwen3:8b": "Strong native tool-calling support. Good for multi-step and cancer queries.",
+    "qwen3.5:0.8b": "Very small / fast; best for simple queries or limited RAM.",
     "deepseek-v3": "Strong reasoning and SQL generation. Good for complex analytical queries.",
     "llama3.1": "General-purpose model. Good baseline for standard queries.",
 }
@@ -84,6 +131,9 @@ _TOOL_LABELS = {
 }
 
 
+# -------------------------
+# Step renderer
+# -------------------------
 def _render_steps(steps: list):
     if not steps:
         return
@@ -104,6 +154,35 @@ def _render_steps(steps: list):
             )
 
 
+# -------------------------
+# Complexity level badge renderer
+# -------------------------
+def render_complexity_level(resp: dict):
+    raw_level = resp.get("complexity_level")
+
+    if raw_level in (None, "", "N/A"):
+        return
+
+    level = str(raw_level).strip()
+    level_upper = level.upper()
+
+    class_map = {
+        "SIMPLE": "complexity-simple",
+        "MODERATE": "complexity-moderate",
+        "COMPLEX": "complexity-complex",
+        "VERY_COMPLEX": "complexity-very-complex",
+    }
+    css_class = class_map.get(level_upper, "complexity-unknown")
+
+    st.markdown(
+        f'<div class="complexity-pill {css_class}">Generated SQL Complexity Level: {level_upper.replace("_", " ")}</div>',
+        unsafe_allow_html=True,
+    )
+
+
+# -------------------------
+# Main assistant payload renderer
+# -------------------------
 def render_assistant_payload(resp: dict):
     _render_steps(resp.get("steps", []))
     if resp.get("status") != "ok":
@@ -112,10 +191,19 @@ def render_assistant_payload(resp: dict):
         st.error(f"**Error:** {err_msg}")
         if reasons:
             st.code("\n".join(str(r) for r in reasons), language="text")
+        render_complexity_level(resp)
+        final_sql = resp.get("final_sql", "")
+        if final_sql and final_sql != "No SQL found":
+            with st.expander("SQL attempted", expanded=False):
+                st.code(final_sql, language="sql")
         st.info("💡 **Try again:** Rephrase your question or check that Ollama is running.")
         return
 
-    st.write(resp.get("message", ""))
+    message = resp.get("message", "")
+    if message:
+        st.write(message)
+
+    render_complexity_level(resp)
 
     if "metric" in resp and "value" in resp:
         metric = str(resp["metric"])
@@ -139,7 +227,9 @@ def render_assistant_payload(resp: dict):
         with st.expander("SQL executed", expanded=False):
             st.code(final_sql, language="sql")
 
-# for chat history
+# -------------------------
+# Chat history
+# -------------------------
 for m in st.session_state.messages:
     with st.chat_message(m["role"]):
         if m["role"] == "assistant" and isinstance(m.get("content"), dict):
@@ -147,7 +237,10 @@ for m in st.session_state.messages:
         else:
             st.write(m["content"])
 
-# sample questions — expander sits naturally above chat input, always aligned
+
+# -------------------------
+# Sample questions
+# -------------------------
 with st.expander("Sample questions", expanded=False):
     buttons_html = ""
     for t in SAMPLE_TEMPLATES:
@@ -168,7 +261,10 @@ with st.expander("Sample questions", expanded=False):
     )
     st.components.v1.html(iframe_html, height=85, scrolling=False)
 
-# user input (/ask/stream)
+
+# -------------------------
+# User input (/ask/stream)
+# -------------------------
 prompt = st.chat_input("Ask a question about the data…", disabled=st.session_state.processing)
 if prompt and not st.session_state.processing:
     st.session_state.processing = True

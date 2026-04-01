@@ -1,4 +1,5 @@
 import sys
+from datetime import datetime
 from pathlib import Path
 from compare_results import compare_results_f1
 print("Importing SQLgenerator")
@@ -31,9 +32,10 @@ qe = QueryExecutor(max_rows=100000)
 
 BASE_MODEL = "openai/gpt-4o-mini"
 models = [
-    "openai/gpt-4o-mini",
-    "deepseek/deepseek-v3.2",
-    "qwen/qwen-max",
+    "qwen3:8b"
+    #"openai/gpt-4o-mini",
+    #"deepseek/deepseek-v3.2",
+    #"qwen/qwen-max",
     #"anthropic/claude-3-5-sonnet-20241022",
     #"arcee-ai/trinity-large-preview:free",
     #"stepfun/step-3.5-flash:free",
@@ -339,4 +341,15 @@ NCCS_Test_case = [
 
 evaluation_data = evaluate_llm_performance(models, NCCS_Test_case,qe)
 print(evaluation_data)
-evaluation_data.to_excel("nccs_evaluation_results(NCCS_test_paid_V3).xlsx",index=False)
+
+
+current_dir = Path(__file__).resolve().parent
+
+project_root = current_dir.parent
+eval_dir = project_root / "eval_files"
+eval_dir.mkdir(parents=True, exist_ok=True)
+
+# Generate a timestamp string (e.g., 20260329_2355)
+timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+file_path = eval_dir / f"nccs_evaluation_results_{timestamp}.csv"
+evaluation_data.to_csv(file_path, index=False)

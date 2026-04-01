@@ -22,6 +22,7 @@ pipeline.py  ←  deterministic hybrid pipeline
     ├─ Step 5: validate_sql_query()   ← loop until valid (LLM fixes errors)
     ├─ Step 6: get_data()             ← execute validated SQL via DuckDB
     └─ Step 7: LLM summarises results ← 1-2 sentence plain-language answer
+    └─ Step 8: evaluate_live_query()  ← complexity / semantic scores and logging
     │
     ▼
 retrieval/
@@ -180,6 +181,7 @@ If `retrieval/chroma_db/` is missing (not committed for large repos), regenerate
 ```bash
 cd retrieval
 jupyter notebook anchor_NUS_capstone_V2.ipynb
+# or: jupyter notebook exploratory.ipynb
 ```
 
 Run all cells in the notebook. This embeds the schema columns, ICD-10 cancer reference, and SQL templates into ChromaDB using the `sentence-transformers/all-mpnet-base-v2` model.

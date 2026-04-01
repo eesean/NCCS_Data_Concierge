@@ -8,14 +8,16 @@ OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 
 
-def ollama_chat(messages: list, tools: list = None) -> dict:
+def ollama_chat(messages: list, tools: list = None, model: str = None) -> dict:
     """Thin wrapper around ollama.chat() for consistent call signature.
 
     think=False disables qwen3's extended chain-of-thought mode, which
     otherwise runs for several minutes per call before producing a response.
+
+    If ``model`` is None, uses ``OLLAMA_MODEL`` from the environment.
     """
     kwargs = {
-        "model": OLLAMA_MODEL,
+        "model": model or OLLAMA_MODEL,
         "messages": messages,
         "think": False,
     }
