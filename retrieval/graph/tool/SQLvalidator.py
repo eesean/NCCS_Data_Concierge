@@ -334,7 +334,7 @@ def validate_sql_query(sql: str) -> str:
         con=con,
         sql=sql,
         allow_tables=allow_tables,
-        allow_columns=allow_columns,
+        allow_columns=None,
         require_limit=False,
         block_select_star=True,
     )
