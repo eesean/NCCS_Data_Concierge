@@ -153,6 +153,21 @@ def has_select_star(tree: exp.Expression) -> bool:
                 return True
     return False
 
+def extract_cte_names(tree: exp.Expression) -> Set[str]:
+    cte_names = set()
+    for cte in tree.find_all(exp.CTE):
+        if cte.alias:
+            cte_names.add(cte.alias)
+    return cte_names
+
+
+def extract_alias_names(tree: exp.Expression) -> Set[str]:
+    alias_names = set()
+    for alias in tree.find_all(exp.Alias):
+        if alias.alias:
+            alias_names.add(alias.alias)
+    return alias_names
+
 
 # ----------------------------
 # Safety check
@@ -184,13 +199,19 @@ def safety_check(
     tables = extract_tables(tree)
     cols = extract_columns(tree)
 
+    cte_names = extract_cte_names(tree)
+    alias_names = extract_alias_names(tree)
+
+    base_tables = [t for t in tables if t not in cte_names]
+    real_cols = [c for c in cols if c not in alias_names]
+
     if allow_tables is not None:
-        bad_tables = [t for t in tables if t not in allow_tables]
+        bad_tables = [t for t in base_tables if t not in allow_tables]
         if bad_tables:
             reasons.append(f"DISALLOWED_TABLES:{','.join(bad_tables)}")
 
     if allow_columns is not None:
-        bad_cols = [c for c in cols if c not in allow_columns]
+        bad_cols = [c for c in real_cols if c not in allow_columns]
         if bad_cols:
             reasons.append(f"DISALLOWED_COLUMNS:{','.join(bad_cols)}")
 
@@ -334,7 +355,7 @@ def validate_sql_query(sql: str) -> str:
         con=con,
         sql=sql,
         allow_tables=allow_tables,
-        allow_columns=None,
+        allow_columns=allow_columns,
         require_limit=False,
         block_select_star=True,
     )
@@ -376,45 +397,132 @@ def validate_sql_query(sql: str) -> str:
     return f"SQL is valid. Tables referenced: {tables}. Proceed to get_data."
 
 # Testing
-# if __name__ == "__main__":
-#     con = _get_connection()
+if __name__ == "__main__":
+    con = _get_connection()
 
-#     allow_tables = set(PARQUETS.keys())
-#     schema_map = get_schema_map(con, PARQUETS)
-#     allow_columns = flatten_schema_map(schema_map)
+    allow_tables = set(PARQUETS.keys())
+    schema_map = get_schema_map(con, PARQUETS)
 
-#     test_queries = {
-#         "query_1": """
-#             SELECT COUNT(person_id) AS count
-#             FROM (
-#                 SELECT *,
-#                        trim(split(condition_source_value, '||')[4]) as Histo2
-#                 FROM condition_occurrence
-#             )
-#             WHERE Histo2 ILIKE '%Signet ring%'
-#         """,
-#         "query_2": """
-#             SELECT COUNT(*) as n, race_source_value
-#             FROM person
-#             GROUP BY race_source_value
-#             ORDER BY n DESC
-#         """,
-#     }
+    # Keep this aligned with your current validator setup
+    # Set to flatten_schema_map(schema_map) later if you want to re-enable column validation
+    allow_columns = None
 
-#     for name, sql in test_queries.items():
-#         print(f"\n=== {name} ===")
-#         result = validate_sql(
-#             con=con,
-#             sql=sql,
-#             allow_tables=allow_tables,
-#             allow_columns=allow_columns,
-#             require_limit=False,
-#             block_select_star=True,
-#         )
-#         print("SQL:")
-#         print(sql)
-#         print("is_safe:", result.is_safe)
-#         print("safety_reasons:", result.safety_reasons)
-#         print("is_performant:", result.is_performant)
-#         print("performance_reasons:", result.performance_reasons)
-#         print("error:", result.error)
+    test_queries = {
+        "crc_count_2020": {
+            "sql": """
+                SELECT COUNT(DISTINCT person_id)
+                FROM condition_occurrence
+                WHERE (ICD10 ILIKE 'C18%' OR ICD10 ILIKE 'C19' OR ICD10 ILIKE 'C20')
+                  AND YEAR(condition_start_date) = 2020
+            """,
+            "expected_safe": True,
+        },
+        "signet_ring_subquery": {
+            "sql": """
+                SELECT COUNT(person_id) AS count
+                FROM (
+                    SELECT person_id,
+                           trim(split(condition_source_value, '||')[4]) AS Histo2
+                    FROM condition_occurrence
+                ) t
+                WHERE Histo2 ILIKE '%Signet ring%'
+            """,
+            "expected_safe": True,
+        },
+        "race_group_count": {
+            "sql": """
+                SELECT COUNT(*) AS n, race_source_value
+                FROM person
+                GROUP BY race_source_value
+                ORDER BY n DESC
+            """,
+            "expected_safe": True,
+        },
+        "crc_age_bands_cte": {
+            "sql": """
+                WITH crc AS (
+                    SELECT
+                        b.person_id,
+                        b.condition_start_date AS dx_date,
+                        b.ICD10
+                    FROM condition_occurrence b
+                    WHERE b.ICD10 LIKE 'C18%'
+                       OR b.ICD10 LIKE 'C19'
+                       OR b.ICD10 LIKE 'C20'
+                ),
+                ages AS (
+                    SELECT
+                        c.person_id,
+                        c.dx_date,
+                        EXTRACT(YEAR FROM c.dx_date) - a.year_of_birth -
+                        CASE
+                            WHEN EXTRACT(MONTH FROM c.dx_date) <= a.month_of_birth THEN 1
+                            ELSE 0
+                        END AS age
+                    FROM crc c
+                    JOIN person a USING (person_id)
+                ),
+                bands AS (
+                    SELECT
+                        person_id,
+                        dx_date,
+                        age,
+                        CAST(FLOOR(age / 5) * 5 AS INT) AS age_lo,
+                        CAST(FLOOR(age / 5) * 5 + 4 AS INT) AS age_hi
+                    FROM ages
+                )
+                SELECT
+                    CONCAT(CAST(age_lo AS STRING), '-', CAST(age_hi AS STRING)) AS age_group,
+                    COUNT(*) AS n_cases
+                FROM bands
+                GROUP BY age_lo, age_hi
+                ORDER BY age_lo
+            """,
+            "expected_safe": True,
+        },
+        "bad_table_should_fail": {
+            "sql": """
+                SELECT *
+                FROM concept
+            """,
+            "expected_safe": False,
+        },
+        "non_select_should_fail": {
+            "sql": """
+                DELETE FROM person
+            """,
+            "expected_safe": False,
+        },
+    }
+
+    print("=== Validator Test Run ===")
+    print("allow_tables:", sorted(allow_tables))
+    print("column_validation_enabled:", allow_columns is not None)
+
+    if allow_columns is not None:
+        print("num_allowed_columns:", len(allow_columns))
+
+    for name, case in test_queries.items():
+        sql = case["sql"].strip()
+        expected_safe = case["expected_safe"]
+
+        result = validate_sql(
+            con=con,
+            sql=sql,
+            allow_tables=allow_tables,
+            allow_columns=allow_columns,
+            require_limit=False,
+            block_select_star=True,
+        )
+
+        print(f"\n=== {name} ===")
+        print("SQL:")
+        print(sql)
+        print("expected_safe:", expected_safe)
+        print("actual_safe:", result.is_safe)
+        print("PASS" if result.is_safe == expected_safe else "FAIL")
+        print("safety_reasons:", result.safety_reasons)
+        print("is_performant:", result.is_performant)
+        print("performance_reasons:", result.performance_reasons)
+        print("ast_features:", result.ast_features)
+        print("error:", result.error)
