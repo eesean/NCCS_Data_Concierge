@@ -2,7 +2,7 @@ import json
 import re
 from dotenv import load_dotenv
 
-from retrieval.llm import ollama_chat, OLLAMA_MODEL
+from retrieval.llm import ollama_chat
 
 load_dotenv()
 

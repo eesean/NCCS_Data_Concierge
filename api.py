@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from typing import Optional, Any, Dict
+from typing import Optional
 
 from pipeline import stream_question_agent
 

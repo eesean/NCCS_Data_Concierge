@@ -9,6 +9,7 @@ Fixed execution order:
   5. validate_sql_query  — hardcoded loop until SQL passes (max 3 tries)
   6. get_data            — hardcoded, always runs after validation passes
   7. LLM: summarise results
+  8. Evaluation logging of final query and metrics
 """
 
 import json
