@@ -19,10 +19,8 @@ import json
 import time
 import pandas as pd
 import gc
-#--- to delte ----
 import psutil
 import os
-#------------------
 
 def get_memory_usage():
     process = psutil.Process(os.getpid())

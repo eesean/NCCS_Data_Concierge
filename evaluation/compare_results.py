@@ -1,8 +1,7 @@
 # Evaluate similarity between ground-truth SQL result set and LLM SQL result set using precision, recall, and f1 score
 
 from __future__ import annotations
-from typing import Any, List, Tuple, Optional
-import itertools
+from typing import Any, List, Tuple
 from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -68,36 +67,6 @@ def _col_fingerprint(rows: List[Tuple], col_idx: int) -> Tuple[str, ...]:
     vals = [_norm(r[col_idx]) for r in rows]
     vals.sort()
     return tuple(vals)
-
-#Unused for now, was used previously. Left here just in case requirements change again in future.
-def _best_column_permutation(gold_rows: List[Tuple], pred_rows: List[Tuple], k: int) -> Tuple[int, ...]:
-    """
-    Find permutation p of [0..k-1] such that pred columns reordered by p
-    best match gold columns by value fingerprints.
-    """
-    gold_fps = [_col_fingerprint(gold_rows, i) for i in range(k)]
-    pred_fps = [_col_fingerprint(pred_rows, j) for j in range(k)]
-
-    best_p = tuple(range(k))
-    best_score = -1
-
-    for p in itertools.permutations(range(k)):
-        score = 0
-        for i in range(k):
-            if gold_fps[i] == pred_fps[p[i]]:
-                score += 1
-        if score > best_score:
-            best_score = score
-            best_p = p
-            if best_score == k:
-                break  # perfect alignment found
-
-    return best_p
-
-
-def _reorder_rows(rows: List[Tuple], perm: Tuple[int, ...]) -> List[Tuple]:
-    return [tuple(r[j] for j in perm) for r in rows]
-
 
 # -----------------------------
 # Multiset row comparison
