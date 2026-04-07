@@ -2,28 +2,34 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-METRIC_COLS = [
-    "Normalized Latency (s)",
-    "Normalized Complexity Score",
-    "Normalized Log Transformed Tokens",
-    "Normalized Semantic Score",
-]
-
 SCORE_COL = "Efficiency Score"
 
 # Canonical complexity level order — used everywhere levels appear
 COMPLEXITY_ORDER = ["SIMPLE", "MODERATE", "COMPLEX", "VERY_COMPLEX"]
 
-METRIC_INFO = {
-    "Normalized Semantic Score": {
-        "short": "Semantic",
-        "help": (
-            "Measures how well the generated SQL matches the intent of the original "
-            "natural-language query. Computed by asking the model to explain the generated "
-            "SQL in natural language and comparing that explanation against the user's "
-            "original query."
-        ),
-    },
+_SEMANTIC_HELP = (
+    "Measures how well the generated SQL matches the intent of the original "
+    "natural-language query. Computed by asking the model to explain the generated "
+    "SQL in natural language and comparing that explanation against the user's "
+    "original query."
+)
+_F1_HELP = (
+    "Measures the F1 score of the generated SQL by comparing the query result sets "
+    "of the generated SQL and the gold SQL. F1 is the harmonic mean of precision and recall."
+)
+
+# Accuracy metric configuration — defaults to Semantic; call configure_accuracy_metric() to switch
+ACCURACY_COL = "Normalized Semantic Score"
+ACCURACY_SHORT = "Semantic"
+
+METRIC_COLS = [
+    "Normalized Latency (s)",
+    "Normalized Complexity Score",
+    "Normalized Log Transformed Tokens",
+    ACCURACY_COL,
+]
+
+_NON_ACCURACY_INFO = {
     "Normalized Log Transformed Tokens": {
         "short": "Token",
         "help": "Measures token usage for the query run. Based on prompt and output token count.",
@@ -40,6 +46,32 @@ METRIC_INFO = {
         ),
     },
 }
+
+METRIC_INFO = {ACCURACY_COL: {"short": ACCURACY_SHORT, "help": _SEMANTIC_HELP}, **_NON_ACCURACY_INFO}
+
+
+def configure_accuracy_metric(df: pd.DataFrame):
+    """Detect whether F1 Score is available and reconfigure the accuracy metric."""
+    global ACCURACY_COL, ACCURACY_SHORT, METRIC_COLS, METRIC_INFO
+
+    if "Normalized F1 Score" in df.columns:
+        ACCURACY_COL = "Normalized F1 Score"
+        ACCURACY_SHORT = "F1"
+        acc_help = _F1_HELP
+    else:
+        ACCURACY_COL = "Normalized Semantic Score"
+        ACCURACY_SHORT = "Semantic"
+        acc_help = _SEMANTIC_HELP
+
+    METRIC_COLS[:] = [
+        "Normalized Latency (s)",
+        "Normalized Complexity Score",
+        "Normalized Log Transformed Tokens",
+        ACCURACY_COL,
+    ]
+
+    METRIC_INFO.clear()
+    METRIC_INFO.update({ACCURACY_COL: {"short": ACCURACY_SHORT, "help": acc_help}, **_NON_ACCURACY_INFO})
 
 
 # -------------------------
@@ -203,14 +235,13 @@ def render_summary_row(df_scores_f: pd.DataFrame):
 
     c1, c2, c3 = st.columns([1.4, 1.4, 1.0])
 
+    _score_formula = f"Calculated Score = 60% {ACCURACY_SHORT} + 20% Complexity + 10% Latency + 10% Token."
+
     with c1:
         st.metric(
             "Average Total Score",
             f"{avg_total:.3f}",
-            help=(
-                "Average of the final calculated score across the currently selected queries. "
-                "Calculated Score = 60% Semantic + 20% Complexity + 10% Latency + 10% Token."
-            ),
+            help=f"Average of the final calculated score across the currently selected queries. {_score_formula}",
         )
         st.progress(_clamp01(avg_total), text="0–1 normalised")
 
@@ -218,10 +249,7 @@ def render_summary_row(df_scores_f: pd.DataFrame):
         st.metric(
             "Median Total Score",
             f"{med_total:.3f}",
-            help=(
-                "Median of the final calculated score across the currently selected queries. "
-                "Calculated Score = 60% Semantic + 20% Complexity + 10% Latency + 10% Token."
-            ),
+            help=f"Median of the final calculated score across the currently selected queries. {_score_formula}",
         )
         st.progress(_clamp01(med_total), text="0–1 normalised")
 
@@ -233,7 +261,7 @@ def render_summary_row(df_scores_f: pd.DataFrame):
 def render_metric_name_row():
     c1, c2, c3, c4 = st.columns(4)
     with c1:
-        st.metric("Semantic", "", help=METRIC_INFO["Normalized Semantic Score"]["help"])
+        st.metric(ACCURACY_SHORT, "", help=METRIC_INFO[ACCURACY_COL]["help"])
     with c2:
         st.metric("Latency", "", help=METRIC_INFO["Normalized Latency (s)"]["help"])
     with c3:
@@ -255,7 +283,7 @@ def _agg_by_model(df_scores_f: pd.DataFrame) -> pd.DataFrame:
             mean_latency=("Normalized Latency (s)", "mean"),
             mean_complexity=("Normalized Complexity Score", "mean"),
             mean_token=("Normalized Log Transformed Tokens", "mean"),
-            mean_semantic=("Normalized Semantic Score", "mean"),
+            mean_accuracy=(ACCURACY_COL, "mean"),
         )
         .reset_index()
         .sort_values("mean_total", ascending=False)
@@ -295,8 +323,8 @@ def _whatif_dialog(df_scores_f: pd.DataFrame):
 
         c1, c2, c3, c4 = st.columns(4)
         with c1:
-            w_semantic = st.slider("Semantic %", 0, 100, 60, step=5, key="ws_semantic",
-                                   help=METRIC_INFO["Normalized Semantic Score"]["help"])
+            w_accuracy = st.slider(f"{ACCURACY_SHORT} %", 0, 100, 60, step=5, key="ws_accuracy",
+                                   help=METRIC_INFO[ACCURACY_COL]["help"])
         with c2:
             w_complexity = st.slider("Complexity %", 0, 100, 20, step=5, key="ws_complexity",
                                      help=METRIC_INFO["Normalized Complexity Score"]["help"])
@@ -307,7 +335,7 @@ def _whatif_dialog(df_scores_f: pd.DataFrame):
             w_token = st.slider("Token %", 0, 100, 10, step=5, key="ws_token",
                                 help=METRIC_INFO["Normalized Log Transformed Tokens"]["help"])
 
-        total = w_semantic + w_complexity + w_latency + w_token
+        total = w_accuracy + w_complexity + w_latency + w_token
         if total != 100:
             st.warning(f"Weights sum to **{total}%** — adjust to reach exactly 100%.")
         else:
@@ -316,7 +344,7 @@ def _whatif_dialog(df_scores_f: pd.DataFrame):
         if total == 100:
             df_sim = df_scores_f.copy()
             df_sim["Simulated Score"] = (
-                df_sim["Normalized Semantic Score"] * w_semantic / 100
+                df_sim[ACCURACY_COL] * w_accuracy / 100
                 + df_sim["Normalized Complexity Score"] * w_complexity / 100
                 + df_sim["Normalized Latency (s)"] * w_latency / 100
                 + df_sim["Normalized Log Transformed Tokens"] * w_token / 100
@@ -379,8 +407,8 @@ def _whatif_dialog(df_scores_f: pd.DataFrame):
         st.markdown("**Weights**")
         wc1, wc2, wc3, wc4 = st.columns(4)
         with wc1:
-            cw_semantic = st.slider("Semantic %", 0, 100, 60, step=5, key="calc_w_semantic",
-                                    help=METRIC_INFO["Normalized Semantic Score"]["help"])
+            cw_accuracy = st.slider(f"{ACCURACY_SHORT} %", 0, 100, 60, step=5, key="calc_w_accuracy",
+                                    help=METRIC_INFO[ACCURACY_COL]["help"])
         with wc2:
             cw_complexity = st.slider("Complexity %", 0, 100, 20, step=5, key="calc_w_complexity",
                                       help=METRIC_INFO["Normalized Complexity Score"]["help"])
@@ -391,7 +419,7 @@ def _whatif_dialog(df_scores_f: pd.DataFrame):
             cw_token = st.slider("Token %", 0, 100, 10, step=5, key="calc_w_token",
                                  help=METRIC_INFO["Normalized Log Transformed Tokens"]["help"])
 
-        calc_total = cw_semantic + cw_complexity + cw_latency + cw_token
+        calc_total = cw_accuracy + cw_complexity + cw_latency + cw_token
         if calc_total != 100:
             st.warning(f"Weights sum to **{calc_total}%** — adjust to reach exactly 100%.")
         else:
@@ -400,8 +428,8 @@ def _whatif_dialog(df_scores_f: pd.DataFrame):
         st.markdown("**Metric Values**")
         vc1, vc2, vc3, vc4 = st.columns(4)
         with vc1:
-            v_semantic = st.number_input("Semantic Score", 0.0, 1.0, 0.80, step=0.01, key="calc_v_semantic",
-                                         help=METRIC_INFO["Normalized Semantic Score"]["help"])
+            v_accuracy = st.number_input(f"{ACCURACY_SHORT} Score", 0.0, 1.0, 0.80, step=0.01, key="calc_v_accuracy",
+                                         help=METRIC_INFO[ACCURACY_COL]["help"])
         with vc2:
             v_complexity = st.number_input("Complexity Score", 0.0, 1.0, 0.75, step=0.01, key="calc_v_complexity",
                                            help=METRIC_INFO["Normalized Complexity Score"]["help"])
@@ -413,7 +441,7 @@ def _whatif_dialog(df_scores_f: pd.DataFrame):
                                       help=METRIC_INFO["Normalized Log Transformed Tokens"]["help"])
 
         calculated = (
-            v_semantic * cw_semantic / 100
+            v_accuracy * cw_accuracy / 100
             + v_complexity * cw_complexity / 100
             + v_latency * cw_latency / 100
             + v_token * cw_token / 100
@@ -431,9 +459,9 @@ def _whatif_dialog(df_scores_f: pd.DataFrame):
             st.progress(_clamp01(calculated))
 
         breakdown = pd.DataFrame({
-            "Metric": ["Semantic", "Complexity", "Latency", "Token"],
+            "Metric": [ACCURACY_SHORT, "Complexity", "Latency", "Token"],
             "Contribution": [
-                v_semantic * cw_semantic / 100,
+                v_accuracy * cw_accuracy / 100,
                 v_complexity * cw_complexity / 100,
                 v_latency * cw_latency / 100,
                 v_token * cw_token / 100,
@@ -457,7 +485,7 @@ def _whatif_dialog(df_scores_f: pd.DataFrame):
         )
 
         metric_options = {
-            "Semantic Score": "Normalized Semantic Score",
+            f"{ACCURACY_SHORT} Score": ACCURACY_COL,
             "Complexity Score": "Normalized Complexity Score",
             "Latency Score": "Normalized Latency (s)",
             "Token Score": "Normalized Log Transformed Tokens",
@@ -509,8 +537,8 @@ def _whatif_dialog(df_scores_f: pd.DataFrame):
 def render_tab_summary(df_scores_f: pd.DataFrame):
     st.subheader("Model Summary Scores")
     st.markdown(
-        "**Calculated Score** is computed with the following weightage: "
-        "**60% Accuracy** (Semantic Score), **20% Complexity**, **10% Latency**, **10% Token**."
+        f"**Calculated Score** is computed with the following weightage: "
+        f"**60% Accuracy** ({ACCURACY_SHORT} Score), **20% Complexity**, **10% Latency**, **10% Token**."
     )
 
     render_metric_name_row()
@@ -571,13 +599,20 @@ def render_tab_efficiency(df_scores_f: pd.DataFrame):
 # -------------------------
 def render_tab_accuracy(df_scores_f: pd.DataFrame):
     st.subheader("Accuracy")
-    st.markdown(
-        "- **Semantic**: How well the generated explanation aligns with the NL query intent, shown as a normalised score."
-    )
+    if ACCURACY_SHORT == "F1":
+        st.markdown(
+            "- **F1**: Measures correctness by comparing the result sets of the generated SQL "
+            "and the gold SQL, shown as a normalised score."
+        )
+    else:
+        st.markdown(
+            "- **Semantic**: How well the generated explanation aligns with the NL query intent, "
+            "shown as a normalised score."
+        )
 
     agg = _agg_by_model(df_scores_f)
-    _bar_with_labels(agg, x="Model", y="mean_semantic",
-                     title="Mean Normalized Semantic Score by Model", hover_cols=["runs"])
+    _bar_with_labels(agg, x="Model", y="mean_accuracy",
+                     title=f"Mean Normalized {ACCURACY_SHORT} Score by Model", hover_cols=["runs"])
 
     st.divider()
 
@@ -585,7 +620,7 @@ def render_tab_accuracy(df_scores_f: pd.DataFrame):
         st.info("No 'Complexity Level' column found — complexity drilldown is hidden.")
         return
 
-    tmp = df_scores_f[["Model", "Complexity Level", "Normalized Semantic Score"]].copy()
+    tmp = df_scores_f[["Model", "Complexity Level", ACCURACY_COL]].copy()
     tmp["Complexity Level"] = tmp["Complexity Level"].astype(str).str.strip()
     tmp = tmp[tmp["Complexity Level"].notna() & (tmp["Complexity Level"] != "")]
 
@@ -593,17 +628,16 @@ def render_tab_accuracy(df_scores_f: pd.DataFrame):
         st.info("Complexity Level exists but no usable values found after filtering.")
         return
 
-    # Use canonical ordering
     levels_ordered = _sort_complexity_levels(tmp["Complexity Level"].unique().tolist())
     tmp["Complexity Level"] = pd.Categorical(tmp["Complexity Level"], categories=levels_ordered, ordered=True)
 
     mode = st.radio(
-        "Semantic Accuracy by Query Complexity",
+        f"{ACCURACY_SHORT} Accuracy by Query Complexity",
         ["Overall with all selected models combined", "Per model"],
         horizontal=True,
         index=0,
         help=(
-            "Shows how semantic alignment varies across query complexity groupings. "
+            f"Shows how {ACCURACY_SHORT.lower()} score varies across query complexity groupings. "
             "Uses the 'Complexity Level' values in your dataset."
         ),
     )
@@ -611,13 +645,14 @@ def render_tab_accuracy(df_scores_f: pd.DataFrame):
     if mode.startswith("Overall"):
         by_lvl = (
             tmp.groupby("Complexity Level", as_index=False, observed=True)
-            .agg(mean_semantic=("Normalized Semantic Score", "mean"), n=("Normalized Semantic Score", "count"))
+            .agg(mean_accuracy=(ACCURACY_COL, "mean"), n=(ACCURACY_COL, "count"))
             .sort_values("Complexity Level")
         )
-        by_lvl["_label"] = by_lvl["mean_semantic"].round(3).astype(str)
+        by_lvl["_label"] = by_lvl["mean_accuracy"].round(3).astype(str)
 
-        fig = px.line(by_lvl, x="Complexity Level", y="mean_semantic", markers=True,
-                      text="_label", title="Mean Normalized Semantic Score vs Complexity Level (Overall)",
+        fig = px.line(by_lvl, x="Complexity Level", y="mean_accuracy", markers=True,
+                      text="_label",
+                      title=f"Mean Normalized {ACCURACY_SHORT} Score vs Complexity Level (Overall)",
                       hover_data=["n"])
         fig.update_traces(textposition="top center")
         fig.update_layout(yaxis_range=[0, 1], margin=dict(l=10, r=10, t=40, b=10))
@@ -626,17 +661,18 @@ def render_tab_accuracy(df_scores_f: pd.DataFrame):
     else:
         by_model_lvl = (
             tmp.groupby(["Model", "Complexity Level"], as_index=False, observed=True)
-            .agg(mean_semantic=("Normalized Semantic Score", "mean"))
+            .agg(mean_accuracy=(ACCURACY_COL, "mean"))
         )
         by_model_lvl["Complexity Level"] = by_model_lvl["Complexity Level"].astype(str)
         order_map = {lvl: i for i, lvl in enumerate(levels_ordered)}
         by_model_lvl["_order"] = by_model_lvl["Complexity Level"].map(order_map).fillna(10**9)
         by_model_lvl = by_model_lvl.sort_values(["_order", "Model"]).drop(columns=["_order"])
 
-        fig = px.line(by_model_lvl, x="Complexity Level", y="mean_semantic", color="Model",
-                      markers=True, title="Normalized Semantic Score across Complexity Level (per model)",
+        fig = px.line(by_model_lvl, x="Complexity Level", y="mean_accuracy", color="Model",
+                      markers=True,
+                      title=f"Normalized {ACCURACY_SHORT} Score across Complexity Level (per model)",
                       category_orders={"Complexity Level": levels_ordered},
-                      hover_data=["Model", "mean_semantic"])
+                      hover_data=["Model", "mean_accuracy"])
         fig.update_layout(yaxis_range=[0, 1], margin=dict(l=10, r=10, t=40, b=10))
         st.plotly_chart(fig, use_container_width=True)
 
@@ -655,9 +691,9 @@ def render_raw_data_section(df_full_f: pd.DataFrame) -> pd.Index:
         df_raw = df_full_f.copy().reset_index(drop=False)
         df_raw = df_raw.rename(columns={"index": "_orig_idx"})
 
-        # Drop Gold SQL if present (not useful in UI)
-        drop_candidates = ["Gold SQL", "gold sql", "Gold_SQL", "gold_sql"]
-        df_raw = df_raw.drop(columns=[c for c in drop_candidates if c in df_raw.columns])
+        if ACCURACY_SHORT != "F1":
+            drop_candidates = ["Gold SQL", "gold sql", "Gold_SQL", "gold_sql"]
+            df_raw = df_raw.drop(columns=[c for c in drop_candidates if c in df_raw.columns])
 
         df_raw.insert(0, "Include", ~df_raw["_orig_idx"].isin(st.session_state["excluded_idx"]))
 
@@ -688,7 +724,7 @@ def render_raw_data_section(df_full_f: pd.DataFrame) -> pd.Index:
         }
 
         numeric_col_config = {
-            "Normalized Semantic Score": METRIC_INFO["Normalized Semantic Score"]["help"],
+            ACCURACY_COL: METRIC_INFO[ACCURACY_COL]["help"],
             "Normalized Latency (s)": METRIC_INFO["Normalized Latency (s)"]["help"],
             "Normalized Log Transformed Tokens": METRIC_INFO["Normalized Log Transformed Tokens"]["help"],
             "Normalized Complexity Score": METRIC_INFO["Normalized Complexity Score"]["help"],
