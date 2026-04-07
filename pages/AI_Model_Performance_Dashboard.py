@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from pathlib import Path
 from dashboardComponents import (
+    configure_accuracy_metric,
     compute_filters,
     render_summary_row,
     render_tab_summary,
@@ -42,6 +43,9 @@ MASTER_FILE = EVAL_DIR / selected_filename
 
 
 df_full = pd.read_csv(MASTER_FILE)
+
+# Step 0: detect accuracy metric — use F1 if available, else Semantic
+configure_accuracy_metric(df_full)
 
 # Step 1: sidebar filters
 df_full_f, df_scores_f = compute_filters(df_full)
