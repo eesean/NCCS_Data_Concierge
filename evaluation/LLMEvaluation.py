@@ -30,7 +30,7 @@ qe = QueryExecutor(max_rows=100000)
 
 BASE_MODEL = "openai/gpt-4o-mini"
 models = [
-    "qwen3:8b"
+    "llama3.1:8b"
     #"openai/gpt-4o-mini",
     #"deepseek/deepseek-v3.2",
     #"qwen/qwen-max",
@@ -42,9 +42,24 @@ models = [
 ]
 PENALTY_SCORE = 0.2
 
-def evaluate_llm_performance(models, eval_dataset, qe):
+def _compute_derived_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Add log-transformed tokens, normalized scores, and the efficiency score."""
+    df["Log Transformed Tokens"] = df["Total Tokens"].apply(lambda x: round(math.log(x + 1), 3))
+    for column in ["Latency (s)", "Complexity Score", "Log Transformed Tokens", "F1 Score", "Semantic Score"]:
+        df[f"Normalized {column}"] = normalize_score(column, df)
+    df["Efficiency Score"] = (
+        0.6 * df["Normalized F1 Score"]
+        + 0.1 * df["Normalized Latency (s)"]
+        + 0.1 * df["Normalized Log Transformed Tokens"]
+        + 0.2 * df["Normalized Complexity Score"]
+    )
+    return df
+
+
+def evaluate_llm_performance(models, eval_dataset, qe, output_path=None):
     results = []
     evaluator = SQLComplexityEvaluator()
+    total_cases = len(models) * len(eval_dataset)
 
     for model in models:
         print(f"\n--- Starting Evaluation for Model: {model} ---")
@@ -82,7 +97,6 @@ def evaluate_llm_performance(models, eval_dataset, qe):
             }
 
             try:
-                # 1. Start the timer
                 start_time = time.perf_counter()
 
                 # 2. Call the generator
@@ -92,14 +106,12 @@ def evaluate_llm_performance(models, eval_dataset, qe):
                 error_payload = None
                 ttft = None  # Time to First Token
 
-                # 3. Process the stream
                 for event in response:
                     #print("Captured Events: " + event)
                     # Capture TTFT (First data event)
                     if ttft is None and event.startswith("data: "):
                         ttft = time.perf_counter() - start_time
                     
-                    # Parse SSE format
                     if event.startswith("data: "):
                         try:
                             data = json.loads(event[6:])
@@ -171,16 +183,13 @@ def evaluate_llm_performance(models, eval_dataset, qe):
                 row_data["Error Message"] = str(e)
             
             finally:
-                # 6. Record the data (Success or Error)
                 results.append(row_data)
+                evaluation_df = _compute_derived_columns(pd.DataFrame(results))
+                if output_path:
+                    evaluation_df.to_csv(output_path, index=False)
+                    print(f"  [{len(results)}/{total_cases}] Saved to {output_path}")
 
-    evaluation_df = pd.DataFrame(results)
-    evaluation_df["Log Transformed Tokens"] = evaluation_df["Total Tokens"].apply(lambda x: round(math.log(x + 1), 3)) # Log transform for better scaling
-    columns_to_normalize = ["Latency (s)", "Complexity Score", "Log Transformed Tokens", "F1 Score", "Semantic Score"]
-    for column in columns_to_normalize:
-        evaluation_df[f"Normalized {column}"] = normalize_score(column, evaluation_df)
-    evaluation_df["Efficiency Score"] = 0.6 * evaluation_df["Normalized F1 Score"] + 0.1 * evaluation_df["Normalized Latency (s)"] + 0.1 * evaluation_df["Normalized Log Transformed Tokens"] + 0.2 * evaluation_df["Normalized Complexity Score"]
-    return evaluation_df
+    return _compute_derived_columns(pd.DataFrame(results))
 
 def normalize_score(column, df):
     min_max_columns = ["F1 Score", "Semantic Score"] # Higher value is better
@@ -337,12 +346,7 @@ NCCS_Test_case = [
     }
 ]
 
-evaluation_data = evaluate_llm_performance(models, NCCS_Test_case,qe)
-print(evaluation_data)
-
-
 current_dir = Path(__file__).resolve().parent
-
 project_root = current_dir.parent
 eval_dir = project_root / "eval_files"
 eval_dir.mkdir(parents=True, exist_ok=True)
@@ -350,4 +354,6 @@ eval_dir.mkdir(parents=True, exist_ok=True)
 # Generate a timestamp string (e.g., 20260329_2355)
 timestamp = datetime.now().strftime("%Y%m%d_%H%M")
 file_path = eval_dir / f"nccs_evaluation_results_{timestamp}.csv"
-evaluation_data.to_csv(file_path, index=False)
+
+evaluation_data = evaluate_llm_performance(models, NCCS_Test_case, qe, output_path=file_path)
+print(evaluation_data)
