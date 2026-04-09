@@ -2,6 +2,20 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
+# Pastel colour palette
+PASTEL_BLUE = "#89CFF0"
+PASTEL_ORANGE = "#FFB347"
+PASTEL_PURPLE = "#B39DDB"
+PASTEL_GREEN = "#77DD77"
+PASTEL_PINK = "#F4ACB7"
+PASTEL_YELLOW = "#FFE5A0"
+PASTEL_TEAL = "#A0E7E5"
+PASTEL_LAVENDER = "#CDB4DB"
+PASTEL_SEQUENCE = [
+    PASTEL_BLUE, PASTEL_ORANGE, PASTEL_PURPLE, PASTEL_GREEN,
+    PASTEL_PINK, PASTEL_YELLOW, PASTEL_TEAL, PASTEL_LAVENDER,
+]
+
 SCORE_COL = "Efficiency Score"
 
 # Canonical complexity level order — used everywhere levels appear
@@ -128,7 +142,7 @@ def compute_filters(df_full: pd.DataFrame):
 
     # --- Total score slider ---
     lo, hi = float(df_scores[SCORE_COL].min()), float(df_scores[SCORE_COL].max())
-    score_range = st.sidebar.slider("Total Score range", lo, hi, (lo, hi))
+    score_range = st.sidebar.slider("Efficiency Score range", lo, hi, (lo, hi))
 
     # Base mask
     mask = df_scores["Model"].isin(selected_models) & df_scores[SCORE_COL].between(*score_range)
@@ -235,21 +249,21 @@ def render_summary_row(df_scores_f: pd.DataFrame):
 
     c1, c2, c3 = st.columns([1.4, 1.4, 1.0])
 
-    _score_formula = f"Calculated Score = 60% {ACCURACY_SHORT} + 20% Complexity + 10% Latency + 10% Token."
+    _score_formula = f"Efficiency Score = 60% {ACCURACY_SHORT} + 20% Complexity + 10% Latency + 10% Token."
 
     with c1:
         st.metric(
-            "Average Total Score",
+            "Average Efficiency Score",
             f"{avg_total:.3f}",
-            help=f"Average of the final calculated score across the currently selected queries. {_score_formula}",
+            help=f"Average of the final efficiency score across the currently selected queries. {_score_formula}",
         )
         st.progress(_clamp01(avg_total), text="0–1 normalised")
 
     with c2:
         st.metric(
-            "Median Total Score",
+            "Median Efficiency Score",
             f"{med_total:.3f}",
-            help=f"Median of the final calculated score across the currently selected queries. {_score_formula}",
+            help=f"Median of the final efficiency score across the currently selected queries. {_score_formula}",
         )
         st.progress(_clamp01(med_total), text="0–1 normalised")
 
@@ -294,10 +308,11 @@ def _agg_by_model(df_scores_f: pd.DataFrame) -> pd.DataFrame:
 # -------------------------
 # Plotly helper: bar chart with labels
 # -------------------------
-def _bar_with_labels(df, x, y, title, decimals=3, hover_cols=None):
+def _bar_with_labels(df, x, y, title, decimals=3, hover_cols=None, bar_color=None):
     d = df.copy()
     d["_label"] = d[y].round(decimals).astype(str)
-    fig = px.bar(d, x=x, y=y, text="_label", title=title, hover_data=hover_cols)
+    fig = px.bar(d, x=x, y=y, text="_label", title=title, hover_data=hover_cols,
+                 color_discrete_sequence=[bar_color or PASTEL_BLUE])
     fig.update_traces(textposition="outside", cliponaxis=False)
     fig.update_layout(
         yaxis_range=[0, 1],
@@ -359,7 +374,8 @@ def _whatif_dialog(df_scores_f: pd.DataFrame):
             agg_sim["_label"] = agg_sim["mean_simulated"].round(3).astype(str)
 
             fig = px.bar(agg_sim, x="Model", y="mean_simulated", text="_label",
-                         title="Simulated Mean Score by Model")
+                         title="Simulated Mean Score by Model",
+                         color_discrete_sequence=[PASTEL_PURPLE])
             fig.update_traces(textposition="outside", cliponaxis=False)
             fig.update_layout(yaxis_range=[0, 1], margin=dict(l=10, r=10, t=60, b=10))
             st.plotly_chart(fig, use_container_width=True)
@@ -452,7 +468,7 @@ def _whatif_dialog(df_scores_f: pd.DataFrame):
         res_col, _ = st.columns([1, 2])
         with res_col:
             st.metric(
-                label="Calculated Score",
+                label="efficiency Score",
                 value=f"{calculated:.4f}",
                 help="Weighted sum of all four metrics. All inputs expected on a 0–1 scale.",
             )
@@ -470,7 +486,8 @@ def _whatif_dialog(df_scores_f: pd.DataFrame):
         fig_b = px.bar(breakdown, x="Metric", y="Contribution",
                        title="Score Contribution by Metric",
                        text=breakdown["Contribution"].round(4).astype(str),
-                       color="Metric")
+                       color="Metric",
+                       color_discrete_sequence=PASTEL_SEQUENCE)
         fig_b.update_traces(textposition="outside", cliponaxis=False)
         fig_b.update_layout(yaxis_range=[0, 1], showlegend=False, margin=dict(l=10, r=10, t=40, b=10))
         st.plotly_chart(fig_b, use_container_width=True)
@@ -480,7 +497,7 @@ def _whatif_dialog(df_scores_f: pd.DataFrame):
     # ----------------------------------------------------------------
     with tab3:
         st.markdown(
-            "Shows the **real relationship** between each metric and the final Calculated Score "
+            "Shows the **real relationship** between each metric and the final efficiency Score "
             "across all actual data, coloured by model."
         )
 
@@ -492,7 +509,7 @@ def _whatif_dialog(df_scores_f: pd.DataFrame):
         }
 
         selected_metric_label = st.selectbox(
-            "Select metric to plot against Calculated Score",
+            "Select metric to plot against efficiency Score",
             options=list(metric_options.keys()),
             key="scatter_metric",
         )
@@ -506,16 +523,17 @@ def _whatif_dialog(df_scores_f: pd.DataFrame):
             fig_scatter = px.scatter(
                 df_scores_f, x=selected_metric_col, y=SCORE_COL,
                 color="Model", hover_data=hover_cols,
-                title=f"{selected_metric_label} vs Calculated Score",
+                title=f"{selected_metric_label} vs Efficiency Score",
                 trendline="ols", trendline_scope="overall",
+                color_discrete_sequence=PASTEL_SEQUENCE,
             )
         except Exception:
             fig_scatter = px.scatter(
                 df_scores_f, x=selected_metric_col, y=SCORE_COL,
                 color="Model", hover_data=hover_cols,
-                title=f"{selected_metric_label} vs Calculated Score",
+                title=f"{selected_metric_label} vs Efficiency Score",
+                color_discrete_sequence=PASTEL_SEQUENCE,
             )
-            st.caption("Install `statsmodels` to show a trendline: `pip install statsmodels`")
 
         fig_scatter.update_layout(xaxis_range=[0, 1], yaxis_range=[0, 1],
                                   margin=dict(l=10, r=10, t=60, b=10))
@@ -524,11 +542,11 @@ def _whatif_dialog(df_scores_f: pd.DataFrame):
 
         corr = df_scores_f[[selected_metric_col, SCORE_COL]].dropna().corr().iloc[0, 1]
         st.metric(
-            label=f"Pearson Correlation: {selected_metric_label} vs Calculated Score",
+            label=f"Pearson Correlation: {selected_metric_label} vs Efficiency Score",
             value=f"{corr:.3f}",
             help="1.0 = perfect positive correlation, 0 = no correlation, -1.0 = perfect negative correlation",
         )
-        st.caption("Trendline fitted across all models combined. Hover over points to see prompt details.")
+        st.caption("Hover over points to see prompt details.")
 
 
 # -------------------------
@@ -537,22 +555,24 @@ def _whatif_dialog(df_scores_f: pd.DataFrame):
 def render_tab_summary(df_scores_f: pd.DataFrame):
     st.subheader("Model Summary Scores")
     st.markdown(
-        f"**Calculated Score** is computed with the following weightage: "
+        f"**Efficiency Score** is computed with the following weightage: "
         f"**60% Accuracy** ({ACCURACY_SHORT} Score), **20% Complexity**, **10% Latency**, **10% Token**."
     )
 
     render_metric_name_row()
 
-    if st.button("Deeper Analysis on Calculated Score", key="open_whatif"):
+    if st.button("Deeper Analysis on Efficiency Score", key="open_whatif"):
         _whatif_dialog(df_scores_f)
 
     agg = _agg_by_model(df_scores_f)
 
     left, right = st.columns(2)
     with left:
-        _bar_with_labels(agg, x="Model", y="mean_total", title="Mean Total Score by Model", hover_cols=["runs"])
+        _bar_with_labels(agg, x="Model", y="mean_total", title="Mean Efficiency Score by Model",
+                         hover_cols=["runs"], bar_color=PASTEL_BLUE)
     with right:
-        _bar_with_labels(agg, x="Model", y="median_total", title="Median Total Score by Model", hover_cols=["runs"])
+        _bar_with_labels(agg, x="Model", y="median_total", title="Median Efficiency Score by Model",
+                         hover_cols=["runs"], bar_color=PASTEL_PURPLE)
 
     st.markdown("**Table View**")
     st.dataframe(
@@ -577,11 +597,14 @@ def render_tab_efficiency(df_scores_f: pd.DataFrame):
 
     c1, c2, c3 = st.columns(3)
     with c1:
-        _bar_with_labels(agg, x="Model", y="mean_latency", title="Mean Norm Latency by Model", hover_cols=["runs"])
+        _bar_with_labels(agg, x="Model", y="mean_latency", title="Mean Norm Latency by Model",
+                         hover_cols=["runs"], bar_color=PASTEL_ORANGE)
     with c2:
-        _bar_with_labels(agg, x="Model", y="mean_token", title="Mean Norm Token by Model", hover_cols=["runs"])
+        _bar_with_labels(agg, x="Model", y="mean_token", title="Mean Norm Token by Model",
+                         hover_cols=["runs"], bar_color=PASTEL_GREEN)
     with c3:
-        _bar_with_labels(agg, x="Model", y="mean_complexity", title="Mean Norm Complexity by Model", hover_cols=["runs"])
+        _bar_with_labels(agg, x="Model", y="mean_complexity", title="Mean Norm Complexity by Model",
+                         hover_cols=["runs"], bar_color=PASTEL_PURPLE)
 
     st.markdown("**Efficiency Profile**")
     prof = agg.set_index("Model")[["mean_latency", "mean_token", "mean_complexity"]].copy()
@@ -589,7 +612,8 @@ def render_tab_efficiency(df_scores_f: pd.DataFrame):
     prof_long = prof.reset_index().melt(id_vars="Model", var_name="Metric", value_name="Score")
 
     fig = px.line(prof_long, x="Metric", y="Score", color="Model", markers=True,
-                  title="Efficiency Profile", hover_data=["Model", "Metric", "Score"])
+                  title="Efficiency Profile", hover_data=["Model", "Metric", "Score"],
+                  color_discrete_sequence=PASTEL_SEQUENCE)
     fig.update_layout(yaxis_range=[0, 1], margin=dict(l=10, r=10, t=40, b=10))
     st.plotly_chart(fig, use_container_width=True)
 
@@ -612,7 +636,8 @@ def render_tab_accuracy(df_scores_f: pd.DataFrame):
 
     agg = _agg_by_model(df_scores_f)
     _bar_with_labels(agg, x="Model", y="mean_accuracy",
-                     title=f"Mean Normalized {ACCURACY_SHORT} Score by Model", hover_cols=["runs"])
+                     title=f"Mean Normalized {ACCURACY_SHORT} Score by Model",
+                     hover_cols=["runs"], bar_color=PASTEL_ORANGE)
 
     st.divider()
 
@@ -653,7 +678,8 @@ def render_tab_accuracy(df_scores_f: pd.DataFrame):
         fig = px.line(by_lvl, x="Complexity Level", y="mean_accuracy", markers=True,
                       text="_label",
                       title=f"Mean Normalized {ACCURACY_SHORT} Score vs Complexity Level (Overall)",
-                      hover_data=["n"])
+                      hover_data=["n"],
+                      color_discrete_sequence=[PASTEL_GREEN])
         fig.update_traces(textposition="top center")
         fig.update_layout(yaxis_range=[0, 1], margin=dict(l=10, r=10, t=40, b=10))
         st.plotly_chart(fig, use_container_width=True)
@@ -672,7 +698,8 @@ def render_tab_accuracy(df_scores_f: pd.DataFrame):
                       markers=True,
                       title=f"Normalized {ACCURACY_SHORT} Score across Complexity Level (per model)",
                       category_orders={"Complexity Level": levels_ordered},
-                      hover_data=["Model", "mean_accuracy"])
+                      hover_data=["Model", "mean_accuracy"],
+                      color_discrete_sequence=PASTEL_SEQUENCE)
         fig.update_layout(yaxis_range=[0, 1], margin=dict(l=10, r=10, t=40, b=10))
         st.plotly_chart(fig, use_container_width=True)
 
