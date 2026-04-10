@@ -468,7 +468,7 @@ def _whatif_dialog(df_scores_f: pd.DataFrame):
         res_col, _ = st.columns([1, 2])
         with res_col:
             st.metric(
-                label="efficiency Score",
+                label="Efficiency Score",
                 value=f"{calculated:.4f}",
                 help="Weighted sum of all four metrics. All inputs expected on a 0–1 scale.",
             )
@@ -497,7 +497,7 @@ def _whatif_dialog(df_scores_f: pd.DataFrame):
     # ----------------------------------------------------------------
     with tab3:
         st.markdown(
-            "Shows the **real relationship** between each metric and the final efficiency Score "
+            "Shows the **real relationship** between each metric and the final Efficiency Score "
             "across all actual data, coloured by model."
         )
 
@@ -509,7 +509,7 @@ def _whatif_dialog(df_scores_f: pd.DataFrame):
         }
 
         selected_metric_label = st.selectbox(
-            "Select metric to plot against efficiency Score",
+            "Select metric to plot against Efficiency Score",
             options=list(metric_options.keys()),
             key="scatter_metric",
         )
