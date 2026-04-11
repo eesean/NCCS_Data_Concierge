@@ -7,12 +7,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from SQLgenerator import explain_sql
 print("Importing SQLEvaluator")
 from SQLEvaluator import SQLComplexityEvaluator
-print("Importing SematicScoring" )
-from SematicScoring import calculate_similarity
+print("Importing SematicScoring")
+from evaluation.SematicScoring import calculate_similarity
 print("Importing queryexecutor")
 from queryexecutor import QueryExecutor
-print("Importing pipeline")
-from pipeline import stream_question_agent
+print("Importing Agent")
+from Agent import stream_question_agent
 print("Importing the rest")
 import math
 import json

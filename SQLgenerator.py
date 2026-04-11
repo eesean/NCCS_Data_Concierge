@@ -2,6 +2,11 @@ import json
 import re
 from dotenv import load_dotenv
 
+from ContextConfiguration import (
+    EXPLAIN_SQL_SYSTEM,
+    EXPLAIN_SQL_USER_TEMPLATE,
+    GENERATE_SQL_FROM_NL_SYSTEM,
+)
 from retrieval.llm import ollama_chat
 
 load_dotenv()
@@ -27,23 +32,8 @@ def generate_sql_from_nl(question: str, model: str = None) -> dict:
     Signatures are kept identical to the OpenRouter version so evaluation_update.py
     continues to work without modification.
     """
-    system = """Return ONLY valid JSON in exactly this format:
-{"sql": "<single SELECT statement>",
- "explanation": "<a brief, sentence explanation of what the query does>"
-}
-
-Rules:
-- Generate exactly ONE SQL statement.
-- Only SELECT queries are allowed. Never use INSERT/UPDATE/DELETE/DROP/CREATE/ALTER.
-- Use only the available tables and join keys present in the schema.
-- Include LIMIT when necessary. For COUNT-only queries, use LIMIT 1 when necessary.
-- Use DuckDB-compatible functions only.
-- Do NOT reference any table not explicitly listed in the schema.
-- Analyse the user prompt carefully; capture all parameters and requirements.
-"""
-
     messages = [
-        {"role": "system", "content": system},
+        {"role": "system", "content": GENERATE_SQL_FROM_NL_SYSTEM},
         {"role": "user", "content": question},
     ]
 
@@ -82,22 +72,9 @@ def explain_sql(sql: str, model: str = None) -> str:
     Translate a SQL query into a concise clinical interrogative sentence.
     Used for adversarial validation in evaluation_update.py.
     """
-    system_message = (
-        "Role: You are a specialized SQL-Medical Auditor.\n\n"
-        "Task: Translate DuckDB SQL queries into a single, concise interrogative sentence "
-        "directed at a physician.\n\n"
-        "Requirements:\n"
-        "- Format: exactly one sentence.\n"
-        "- Content: explicitly state the population being retrieved, including all specific "
-        "medical codes, date ranges, and logical filters.\n"
-        "- Constraint: no SQL jargon (JOIN, WHERE, FLOAT). No introductory text.\n"
-        "- Numbers: keep numeric form (e.g. 5 not 'five', ICD10 not 'I C D 10').\n"
-        "- Tone: professional, precise, clinical."
-    )
-
     messages = [
-        {"role": "system", "content": system_message},
-        {"role": "user", "content": f"SQL: {sql}"},
+        {"role": "system", "content": EXPLAIN_SQL_SYSTEM},
+        {"role": "user", "content": EXPLAIN_SQL_USER_TEMPLATE.format(sql=sql)},
     ]
 
     response = ollama_chat(messages, model=model)

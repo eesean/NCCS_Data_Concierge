@@ -3,7 +3,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional
 
-from pipeline import stream_question_agent
+from Agent import stream_question_agent
 
 app = FastAPI(title="NCCS Data Concierge API")
 
