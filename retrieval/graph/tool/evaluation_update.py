@@ -2,12 +2,13 @@ import math
 import time
 import pandas as pd
 from datetime import datetime
-import os
+from pathlib import Path
+
 from SQLgenerator import explain_sql
 print("Importing SQLEvaluator")
 from evaluation.SQLEvaluator import SQLComplexityEvaluator
-print("Importing SematicScoring" )
-from SematicScoring import calculate_similarity
+print("Importing SematicScoring")
+from evaluation.SematicScoring import calculate_similarity
 
 PENALTY_SCORE = 0.2 # value can be adjusted
 
@@ -56,13 +57,15 @@ def evaluate_live_query(prompt: str, model: str, generated_sql: str, latency: fl
             row_data["Error Message"] += f" | Eval Error: {str(e)}"
 
     # 3. Handle the CSV (Load existing -> Append new -> Recalculate -> Save)
-    csv_path = "eval_files/live_query_logs.csv"
-    
+    # evaluation_update.py → parents[3] = project root (same as SQLvalidator DATA_DIR)
+    csv_path = Path(__file__).resolve().parents[3] / "eval_files" / "live_query_logs.csv"
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
+
     # Create the new row as a DataFrame
     new_row_df = pd.DataFrame([row_data])
-    
+
     # Load existing data if it exists
-    if os.path.exists(csv_path):
+    if csv_path.exists():
         existing_df = pd.read_csv(csv_path)
         # Combine old and new
         full_df = pd.concat([existing_df, new_row_df], ignore_index=True)

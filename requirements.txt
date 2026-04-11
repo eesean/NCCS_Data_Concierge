@@ -17,7 +17,7 @@ langchain==0.3.27
 langchain-community==0.3.31
 langchain-huggingface==0.3.1
 
-# langchain-openai is no longer used by the pipeline but kept for evaluation tooling
+# langchain-openai is no longer used by the Agent but kept for evaluation tooling
 langchain-openai==0.3.35
 
 # Embeddings & vector store

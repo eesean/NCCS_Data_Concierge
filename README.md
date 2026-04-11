@@ -13,7 +13,7 @@ User (Streamlit UI)
 FastAPI backend (api.py)
     │
     ▼
-pipeline.py  ←  deterministic hybrid pipeline
+Agent.py  ←  deterministic hybrid agent / query pipeline
     │
     ├─ Step 1: get_schema_context()   ← always, hardcoded
     ├─ Step 2: get_sql_template()     ← always, hardcoded
@@ -21,7 +21,7 @@ pipeline.py  ←  deterministic hybrid pipeline
     ├─ Step 4: LLM generates SQL      ← focused prompt, no tools
     ├─ Step 5: validate_sql_query()   ← loop until valid (LLM fixes errors)
     ├─ Step 6: get_data()             ← execute validated SQL via DuckDB
-    └─ Step 7: LLM summarises results ← 1-2 sentence plain-language answer
+    ├─ Step 7: LLM summarises results ← 1-2 sentence plain-language answer
     └─ Step 8: evaluate_live_query()  ← evaluate model performance
     │
     ▼
@@ -33,9 +33,6 @@ retrieval/
             SQLvalidator.py    ← DuckDB SQL safety + schema validation
             get_data.py        ← DuckDB query execution against parquets
             evaluation_update.py ← live query logging and scoring
-        node/
-            reasoner.py        ← TOOLS schema definitions + run_agent() loop
-            workflow.py        ← re-exports run_agent for import compatibility
         outputParser.py        ← extract data/text from message history
 ```
 
@@ -75,10 +72,10 @@ retrieval/
 | `c49ec62` | Full migration to qwen3:8b native tool calling; removed LangGraph and OpenRouter |
 
 **Changes made in this branch (uncommitted):**
-- `pipeline.py` — Rewritten as a deterministic hybrid pipeline (schema/template hardcoded; cancer info LLM-decided; validation loop until SQL passes; get_data always executed last)
+- `Agent.py` — Deterministic hybrid agent flow (schema/template hardcoded; cancer info LLM-decided; validation loop until SQL passes; get_data always executed last); replaces the former `pipeline.py`
 - `retrieval/llm.py` — Added `think=False` to suppress qwen3 chain-of-thought mode
 - `retrieval/graph/tool/vectorRag.py` — Made ChromaDB and embedding initialisation lazy (loaded on first query, not at import time)
-- `api.py` — Added `inspect.getsource` patch for Python 3.9 + PyTorch 2.5+ compatibility
+- `api.py` — FastAPI `/ask/stream` endpoint; streams `Agent.stream_question_agent`
 - `NCCS_Query_Assistant.py` — Timeout raised to 300s; error display improved
 
 ---
@@ -117,7 +114,7 @@ curl http://localhost:11434
 # Expected: "Ollama is running"
 ```
 
-Pull the model used by the pipeline:
+Pull the model used by the agent:
 
 ```bash
 ollama pull qwen3:8b
@@ -146,7 +143,7 @@ pip install ollama                 # Ollama Python client
 
 ### 5. Add the parquet data files
 
-Place the following parquet files in `retrieval/datasets/` (or `data/` depending on your `.env` config):
+Place the following parquet files in `data/` at the **project root** (this matches `SQLvalidator.py`):
 
 ```
 condition_occurrence.parquet
@@ -215,8 +212,10 @@ The UI opens at `http://localhost:8501`.
 ## Running the evaluation dashboard
 
 ```bash
-streamlit run pages/evaluation_dashboard.py
+streamlit run pages/AI_Model_Performance_Dashboard.py
 ```
+
+Or launch the main app (`streamlit run NCCS_Query_Assistant.py`) and open **AI Model Performance Dashboard** from the sidebar pages menu.
 
 ---
 
@@ -224,7 +223,7 @@ streamlit run pages/evaluation_dashboard.py
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `OLLAMA_MODEL` | No | `qwen3:8b` | Ollama model tag to use |
+| `OLLAMA_MODEL` | No | `qwen2.5:7b` | Ollama model tag (set `qwen3:8b` in `.env` to match the Ollama setup above) |
 | `OLLAMA_BASE_URL` | No | `http://localhost:11434` | Ollama server URL |
 | `PARQUET_KEY_NAME` | Yes | — | Parquet file encryption key name |
 | `PARQUET_KEY_VALUE` | Yes | — | Parquet file encryption key value |
@@ -249,14 +248,18 @@ streamlit run pages/evaluation_dashboard.py
 | File | Purpose |
 |---|---|
 | `api.py` | FastAPI app — single `/ask/stream` SSE endpoint |
-| `pipeline.py` | Main pipeline orchestrator — deterministic hybrid flow |
+| `Agent.py` | Main agent orchestrator — deterministic hybrid flow |
+| `ContextConfiguration.py` | Central LLM system prompts, user templates, and tool schema (imported by `Agent.py`, `SQLgenerator.py`) |
 | `NCCS_Query_Assistant.py` | Streamlit frontend |
-| `SQLgenerator.py` | Standalone SQL generation + explanation (used by evaluation) |
+| `SQLgenerator.py` | Standalone SQL generation + SQL explanation (used by evaluation and scoring) |
+| `dashboardComponents.py` | Shared Streamlit UI for the performance dashboard |
+| `pages/AI_Model_Performance_Dashboard.py` | Streamlit page — model performance dashboard (`eval_files/*.csv`) |
+| `evaluation/LLMEvaluation.py` | Batch evaluation harness against test cases |
+| `evaluation/SematicScoring.py` | Cross-encoder semantic similarity for evaluation metrics |
 | `retrieval/llm.py` | Ollama chat wrapper (`think=False`, model config) |
 | `retrieval/graph/tool/vectorRag.py` | ChromaDB similarity search for schema, cancer info, SQL templates |
 | `retrieval/graph/tool/SQLvalidator.py` | SQL safety + schema validation via DuckDB |
 | `retrieval/graph/tool/get_data.py` | DuckDB query execution against parquet files |
 | `retrieval/graph/tool/evaluation_update.py` | Live query logging and metric scoring |
-| `retrieval/graph/node/reasoner.py` | TOOLS schema (Ollama JSON format) + `run_agent()` loop |
 | `retrieval/graph/outputParser.py` | Extract data/text from message history dicts |
-| `retrieval/anchor_NUS_capstone_V2.ipynb` | Setup notebook — builds ChromaDB vector stores |
+| `retrieval/exploratory.ipynb` | Setup notebook — builds ChromaDB vector stores |

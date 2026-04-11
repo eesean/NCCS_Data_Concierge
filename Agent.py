@@ -1,5 +1,5 @@
 """
-Hybrid pipeline for the NCCS Query Assistant.
+Agent — hybrid query pipeline for the NCCS Query Assistant.
 
 Fixed execution order:
   1. get_schema_context  — hardcoded, always runs first
@@ -17,6 +17,14 @@ import re
 import time
 from typing import Any, Dict, Generator, List, Optional
 
+from ContextConfiguration import (
+    CANCER_INFO_TOOL,
+    CONTEXT_SYSTEM,
+    SQL_GEN_PROMPT,
+    SUMMARY_SYSTEM,
+    SUMMARY_USER_TEMPLATE,
+    SQL_VALIDATION_FIX_USER_TEMPLATE,
+)
 from retrieval.llm import ollama_chat, OLLAMA_MODEL
 from retrieval.graph.outputParser import parse_data_json, extract_final_text, extract_data_json
 from retrieval.graph.tool.vectorRag import get_cancer_info, get_schema_context, get_sql_template
@@ -54,61 +62,6 @@ def _sql_passed(validation_result: str) -> bool:
         or "sql passed safety checks" in lower
         or "proceed to get_data" in lower
     )
-
-
-# ---------------------------------------------------------------------------
-# System prompts
-# ---------------------------------------------------------------------------
-
-# Tool schema offered to the LLM during the context-gathering phase.
-# Only get_cancer_info is available — schema/template fetching is already done.
-_CANCER_INFO_TOOL = [
-    {
-        "type": "function",
-        "function": {
-            "name": "get_cancer_info",
-            "description": (
-                "Retrieve ICD-10-AM cancer reference text for a specific cancer type. "
-                "Call this when the user's question involves a particular cancer. "
-                "Returns SQL_FILTER (ready ICD10 LIKE predicates) and ICD10_CODES. "
-                "Copy SQL_FILTER verbatim into the WHERE clause — never invent codes like ICDO3."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "Short cancer term, e.g. 'colorectal cancer', 'lung cancer'.",
-                    }
-                },
-                "required": ["query"],
-            },
-        },
-    }
-]
-
-_CONTEXT_SYSTEM = """/no_think
-You are an expert assistant for the NCCS (National Cancer Centre Singapore) dataset.
-
-You have been given the database schema and SQL examples.
-If the user's question involves a specific cancer type, call get_cancer_info to retrieve the correct ICD-10 codes.
-Otherwise do nothing — just acknowledge you are ready.
-
-Do NOT generate SQL yet.
-"""
-
-_SQL_GEN_PROMPT = (
-    "Now generate the DuckDB SQL query to answer the question above.\n"
-    "Rules:\n"
-    "- Return ONLY the raw SQL statement — no explanation, no markdown, no code fences.\n"
-    "- Use ONLY columns and tables from the schema.\n"
-    "- For cancer queries, copy the SQL_FILTER from get_cancer_info verbatim — never use ICDO3.\n"
-    "- Use DuckDB-compatible syntax only.\n"
-)
-
-_SUMMARY_SYSTEM = """/no_think
-You are a data analyst. Summarise the query results in 1-2 clear sentences for a non-technical user.
-"""
 
 
 # ---------------------------------------------------------------------------
@@ -196,9 +149,8 @@ def stream_question_agent(
     model: Optional[str] = None,
     history: Optional[List[Dict]] = None,
 ) -> Generator[str, None, None]:
-    print(f"PIPELINE DEBUG: model is {model}")
     """
-    Deterministic pipeline that yields SSE events.
+    Deterministic agent flow that yields SSE events.
 
     Event types:
       {"type": "step_call",   "tool": <name>}
@@ -238,7 +190,7 @@ def stream_question_agent(
     # STEP 2 — LLM decides whether to call get_cancer_info
     # ------------------------------------------------------------------
     system_content = (
-        _CONTEXT_SYSTEM
+        CONTEXT_SYSTEM
         + f"\n\nDatabase schema:\n{schema_data}"
         + f"\n\nSQL examples (few-shot):\n{sql_template_data}"
     )
@@ -261,7 +213,7 @@ def stream_question_agent(
     # Mini tool-calling loop — only get_cancer_info is offered
     try:
         for _ in range(3):
-            resp = ollama_chat(gen_messages, tools=_CANCER_INFO_TOOL, model=model)
+            resp = ollama_chat(gen_messages, tools=CANCER_INFO_TOOL, model=model)
             assistant_msg = resp["message"]
             if hasattr(assistant_msg, "__dict__"):
                 assistant_msg = dict(assistant_msg)
@@ -300,7 +252,7 @@ def stream_question_agent(
     # STEP 3 — Generate SQL (LLM call, no tools)
     # ------------------------------------------------------------------
     try:
-        gen_messages.append({"role": "user", "content": _SQL_GEN_PROMPT})
+        gen_messages.append({"role": "user", "content": SQL_GEN_PROMPT})
         resp = ollama_chat(gen_messages, model = model)   # no tools — pure SQL generation
         raw = resp["message"].get("content") or ""
         input_tokens += resp.get("prompt_eval_count", 0) or 0
@@ -331,11 +283,9 @@ def stream_question_agent(
             # Validation failed — ask LLM to fix and loop again
             gen_messages.append({
                 "role": "user",
-                "content": (
-                    f"The SQL failed validation:\n{last_validation}\n\n"
-                    f"Current SQL:\n{sql}\n\n"
-                    "Fix the SQL so it passes validation. "
-                    "Return ONLY the corrected SQL statement, no explanation."
+                "content": SQL_VALIDATION_FIX_USER_TEMPLATE.format(
+                    validation_text=last_validation,
+                    sql=sql,
                 ),
             })
             resp = ollama_chat(gen_messages, model=model)
@@ -403,8 +353,14 @@ def stream_question_agent(
     # ------------------------------------------------------------------
     try:
         summary_resp = ollama_chat([
-            {"role": "system", "content": _SUMMARY_SYSTEM},
-            {"role": "user", "content": f"Question: {question}\n\nData:\n{data_result[:3000]}"},
+            {"role": "system", "content": SUMMARY_SYSTEM},
+            {
+                "role": "user",
+                "content": SUMMARY_USER_TEMPLATE.format(
+                    question=question,
+                    data=data_result[:3000],
+                ),
+            },
         ], model = model)
         final_text = summary_resp["message"].get("content") or ""
         input_tokens += summary_resp.get("prompt_eval_count", 0) or 0
