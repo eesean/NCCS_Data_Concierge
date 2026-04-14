@@ -63,6 +63,7 @@ SQL_GEN_PROMPT = (
     "- Use ONLY columns and tables from the schema.\n"
     "- For cancer queries, copy the SQL_FILTER from get_cancer_info verbatim — never use ICDO3.\n"
     "- Use DuckDB-compatible syntax only.\n"
+    "- Every single column referenced in the query must be prefixed with its corresponding table alias to ensure there are zero ambiguous reference errors.\n"
 )
 
 # -----------------------------------------------------------------------------

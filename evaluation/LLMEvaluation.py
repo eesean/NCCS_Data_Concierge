@@ -28,18 +28,6 @@ def get_memory_usage():
 
 qe = QueryExecutor(max_rows=100000)
 
-BASE_MODEL = "openai/gpt-4o-mini"
-models = [
-    "llama3.1:8b"
-    #"openai/gpt-4o-mini",
-    #"deepseek/deepseek-v3.2",
-    #"qwen/qwen-max",
-    #"anthropic/claude-3-5-sonnet-20241022",
-    #"arcee-ai/trinity-large-preview:free",
-    #"stepfun/step-3.5-flash:free",
-    #"z-ai/glm-4.5-air:free",
-    #"nvidia/nemotron-3-nano-30b-a3b:free"
-]
 PENALTY_SCORE = 0.2
 
 def _compute_derived_columns(df: pd.DataFrame) -> pd.DataFrame:
@@ -344,6 +332,21 @@ NCCS_Test_case = [
         "Prompt": "What are the total deaths and their proportion of colorectal cancer for the year 2010-2020?",
         "Gold": "WITH colorectal_patients_2010_2020 AS (SELECT DISTINCT person_id, condition_start_date FROM condition_occurrence WHERE (ICD10 ILIKE 'C18%' OR ICD10 ILIKE 'C19' OR ICD10 ILIKE 'C20') AND YEAR(condition_start_date) BETWEEN 2010 AND 2020) SELECT COUNT(DISTINCT cp.person_id) AS total_colorectal_patients_2010_2020, COUNT(DISTINCT d.person_id) AS total_deaths_colorectal_patients_2010_2020, ROUND((COUNT(DISTINCT d.person_id) * 100.0 / COUNT(DISTINCT cp.person_id)), 2) AS death_proportion_percentage FROM colorectal_patients_2010_2020 cp LEFT JOIN death d ON cp.person_id = d.person_id;"
     }
+]
+
+BASE_MODEL = "qwen2.5-coder:7b"
+
+## Enter all the models you want to run evaluation on
+models = [
+    "rnj-1:8b"
+    #"openai/gpt-4o-mini",
+    #"deepseek/deepseek-v3.2",
+    #"qwen/qwen-max",
+    #"anthropic/claude-3-5-sonnet-20241022",
+    #"arcee-ai/trinity-large-preview:free",
+    #"stepfun/step-3.5-flash:free",
+    #"z-ai/glm-4.5-air:free",
+    #"nvidia/nemotron-3-nano-30b-a3b:free"
 ]
 
 current_dir = Path(__file__).resolve().parent
